@@ -1,14 +1,26 @@
+extern crate bamrescue;
 extern crate docopt;
 extern crate rustc_serialize;
+#[macro_use]
+extern crate slog;
+extern crate slog_async;
+extern crate slog_term;
+
+use slog::Drain;
 
 const USAGE: &'static str = "
-Usage: bamrescue <source> <destination>
+Usage: bamrescue check <bamfile>
+       bamrescue repair <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
+Commands:
+    check       Check BAM file for corruption.
+    repair      Keep only non-corrupted blocks of BAM file.
+
 Arguments:
-    source      BAM file to check or repair.
-    destination Repaired BAM file.
+    bamfile     BAM file to check or repair.
+    output      Repaired BAM file.
 
 Options:
     -h, --help  Show this screen.
@@ -17,12 +29,19 @@ Options:
 
 #[derive(RustcDecodable)]
 struct Args {
-    arg_source: String,
-    arg_destination: String,
+    cmd_check: bool,
+    cmd_repair: bool,
+    arg_bamfile: String,
+    arg_output: String,
     flag_version: bool,
 }
 
 fn main() {
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    let logger = slog::Logger::root(drain, o!());
+
     let args: Args =
         docopt::Docopt::new(USAGE)
             .and_then(|docopts|
@@ -35,7 +54,9 @@ fn main() {
 
     if args.flag_version {
         println!("bamrescue v{}", option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"));
-    } else {
-        println!("Rescuing {} to {}", args.arg_source, args.arg_destination);
+    } else if args.cmd_check {
+        bamrescue::check(args.arg_bamfile, logger);
+    } else if args.cmd_repair {
+        bamrescue::repair(args.arg_bamfile, args.arg_output, logger);
     }
 }
