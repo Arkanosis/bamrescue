@@ -8,7 +8,7 @@ extern crate slog_term;
 
 use slog::Drain;
 
-const USAGE: &'static str = "
+const USAGE: &str = "
 Usage: bamrescue check <bamfile>
        bamrescue repair <bamfile> <output>
        bamrescue -h | --help
