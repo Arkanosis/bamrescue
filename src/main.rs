@@ -55,8 +55,8 @@ fn main() {
     if args.flag_version {
         println!("bamrescue v{}", bamrescue::version());
     } else if args.cmd_check {
-        bamrescue::check(args.arg_bamfile, logger);
+        bamrescue::check(&args.arg_bamfile, &logger);
     } else if args.cmd_repair {
-        bamrescue::repair(args.arg_bamfile, args.arg_output, logger);
+        bamrescue::repair(&args.arg_bamfile, &args.arg_output, &logger);
     }
 }
