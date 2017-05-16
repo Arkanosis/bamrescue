@@ -53,7 +53,7 @@ fn main() {
             );
 
     if args.flag_version {
-        println!("bamrescue v{}", option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"));
+        println!("bamrescue v{}", bamrescue::version());
     } else if args.cmd_check {
         bamrescue::check(args.arg_bamfile, logger);
     } else if args.cmd_repair {
