@@ -7,6 +7,8 @@ extern crate slog_async;
 extern crate slog_term;
 
 use slog::Drain;
+use std::io::Write;
+use std::process;
 
 const USAGE: &str = "
 Usage: bamrescue check <bamfile>
@@ -55,8 +57,14 @@ fn main() {
     if args.flag_version {
         println!("bamrescue v{}", bamrescue::version());
     } else if args.cmd_check {
-        bamrescue::check(&args.arg_bamfile, &logger);
+        bamrescue::check(&args.arg_bamfile, &logger).unwrap_or_else(|error| {
+            writeln!(&mut std::io::stderr(), "bamrescue: Unable to check bam file: {}", error).unwrap();
+            process::exit(1);
+        });
     } else if args.cmd_repair {
-        bamrescue::repair(&args.arg_bamfile, &args.arg_output, &logger);
+        bamrescue::repair(&args.arg_bamfile, &args.arg_output, &logger).unwrap_or_else(|error| {
+            writeln!(&mut std::io::stderr(), "bamrescue: Unable to repair bam file: {}", error).unwrap();
+            process::exit(1);
+        });
     }
 }
