@@ -1,4 +1,4 @@
-# bamrescue [![License](http://img.shields.io/badge/license-ISC-blue.svg)](/LICENSE)
+# bamrescue [![](https://img.shields.io/crates/v/bamrescue.svg)](https://crates.io/crates/bamrescue) [![License](http://img.shields.io/badge/license-ISC-blue.svg)](/LICENSE) [![Build status](https://travis-ci.org/Arkanosis/bamrescue.svg?branch=master)](https://travis-ci.org/Arkanosis/bamrescue)
 
 **bamrescue** is a small command line utility to check Binary Sequence
 Alignment / Map (BAM) files for corruption and repair them.
