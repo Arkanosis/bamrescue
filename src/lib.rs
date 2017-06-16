@@ -69,7 +69,8 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
         extra_field_length = reader.read_u16::<byteorder::LittleEndian>()?;
         debug!(logger, "\tExtra field length of {} bytes", extra_field_length);
 
-        while extra_field_length > 0 {
+        let mut remaining_extra_field_length = extra_field_length;
+        while remaining_extra_field_length > 0 {
             let mut subfield_identifier = [0u8; 2];
             reader.read_exact(&mut subfield_identifier)?;
 
@@ -89,7 +90,7 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
                 reader.seek(SeekFrom::Current(subfield_length as i64))?;
             }
 
-            extra_field_length -= 4 + subfield_length;
+            remaining_extra_field_length -= 4 + subfield_length;
         }
     }
     if block_size == 0 {
@@ -114,7 +115,7 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
         // TODO check the CRC16 against the 2 least signigicant bytes of the CRC32 of the header
     }
 
-    reader.seek(SeekFrom::Current((block_size - extra_field_length - 26u16) as i64))?;
+    reader.seek(SeekFrom::Current((block_size - extra_field_length - 20u16) as i64))?;
     // TODO actually read data to compute its CRC32
 
     let mut data_crc32 = [0u8; 4];
