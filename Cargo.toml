@@ -1,6 +1,6 @@
 [package]
 name = "bamrescue"
-version = "0.0.1"
+version = "0.0.2-dev"
 description = "Utility to check Binary Sequence Alignment / Map (BAM) files for corruption and repair them"
 
 authors = ["Jérémie Roquet <jroquet@arkanosis.net>"]
@@ -16,6 +16,7 @@ keywords = ["bam", "integrity", "check", "repair", "bioinfo"]
 categories = ["command-line-utilities"]
 
 [dependencies]
+byteorder = "1.0"
 docopt = "0.7"
 rustc-serialize = "0.3"
 slog = "2.0"

@@ -7,7 +7,6 @@ extern crate slog_async;
 extern crate slog_term;
 
 use slog::Drain;
-use std::io::Write;
 use std::process;
 
 const USAGE: &str = "
@@ -41,6 +40,7 @@ struct Args {
 fn main() {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog::LevelFilter(drain, slog::Level::Info).fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
     let logger = slog::Logger::root(drain, o!());
 
@@ -57,13 +57,15 @@ fn main() {
     if args.flag_version {
         println!("bamrescue v{}", bamrescue::version());
     } else if args.cmd_check {
-        bamrescue::check(&args.arg_bamfile, &logger).unwrap_or_else(|error| {
-            writeln!(&mut std::io::stderr(), "bamrescue: Unable to check bam file: {}", error).unwrap();
+        bamrescue::check(&args.arg_bamfile, &logger).unwrap_or_else(|cause| {
+            error!(logger, "Unable to check bam file: {}", cause);
+            drop(logger);
             process::exit(1);
         });
     } else if args.cmd_repair {
-        bamrescue::repair(&args.arg_bamfile, &args.arg_output, &logger).unwrap_or_else(|error| {
-            writeln!(&mut std::io::stderr(), "bamrescue: Unable to repair bam file: {}", error).unwrap();
+        bamrescue::repair(&args.arg_bamfile, &args.arg_output, &logger).unwrap_or_else(|cause| {
+            error!(logger, "Unable to repair bam file: {}", cause);
+            drop(logger);
             process::exit(1);
         });
     }
