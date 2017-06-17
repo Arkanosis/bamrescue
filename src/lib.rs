@@ -1,5 +1,6 @@
 extern crate byteorder;
 extern crate crc;
+extern crate inflate;
 #[macro_use]
 extern crate slog;
 
@@ -144,16 +145,33 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
         let header_crc32 = header_digest.sum32();
         if header_crc16[0] != ((header_crc32 & 0xff) as u8) ||
            header_crc16[1] != (((header_crc32 >> 8) & 0xff) as u8) {
-               return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect header CRC16"));
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect header CRC16"));
         }
     }
 
-    reader.seek(SeekFrom::Current((block_size - extra_field_length - 20u16) as i64))?;
-    // TODO actually read data to compute its CRC32
+    let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
+
+    {
+        let mut deflated_bytes = vec![];
+        let mut deflate_reader = reader.take((block_size - extra_field_length - 20u16) as u64);
+        deflate_reader.read_to_end(&mut deflated_bytes)?;
+        let inflated_bytes = match inflate::inflate_bytes(&deflated_bytes) {
+            Ok(inflated_bytes) => inflated_bytes,
+            Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload: {}", error))),
+        };
+        payload_digest.write(&inflated_bytes);
+    }
 
     let mut data_crc32 = [0u8; 4];
     reader.read_exact(&mut data_crc32)?;
-    // TODO check the CRC32 against the uncompressed data
+    let payload_crc32 = payload_digest.sum32();
+
+    if data_crc32[0] != ((payload_crc32 & 0xff) as u8) ||
+       data_crc32[1] != (((payload_crc32 >> 8) & 0xff) as u8) ||
+       data_crc32[2] != (((payload_crc32 >> 16) & 0xff) as u8) ||
+       data_crc32[3] != (((payload_crc32 >> 24) & 0xff) as u8) {
+        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload CRC32"));
+    }
 
     let data_size = reader.read_u32::<byteorder::LittleEndian>()?;
     debug!(logger, "\tData size is {} bytes", data_size);
