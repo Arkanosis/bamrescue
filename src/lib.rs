@@ -150,7 +150,7 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
     }
 
     let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
-
+    let payload_size;
     {
         let mut deflated_bytes = vec![];
         let mut deflate_reader = reader.take((block_size - extra_field_length - 20u16) as u64);
@@ -160,6 +160,7 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
             Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload: {}", error))),
         };
         payload_digest.write(&inflated_bytes);
+        payload_size = inflated_bytes.len();
     }
 
     let mut data_crc32 = [0u8; 4];
@@ -175,6 +176,9 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
 
     let data_size = reader.read_u32::<byteorder::LittleEndian>()?;
     debug!(logger, "\tData size is {} bytes", data_size);
+    if data_size as usize != payload_size {
+        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload size"));
+    }
 
     debug!(logger, "\tAt offset {}", reader.seek(SeekFrom::Current(0))?);
 
