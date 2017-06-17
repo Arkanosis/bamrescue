@@ -10,7 +10,6 @@ use byteorder::ReadBytesExt;
 use crc::crc32::Hasher32;
 
 use std::fs::File;
-use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -24,10 +23,7 @@ const BGZF_IDENTIFIER: [u8; 2] = [0x42, 0x43];
 
 const DEFLATE: u8 = 8;
 
-const FHCRC: u8 = 1 << 1;
-const FEXTRA: u8 = 1 << 2;
-const FNAME: u8 = 1 << 3;
-const FCOMMENT: u8 = 1 << 4;
+const EXTRA: u8 = 1 << 2;
 
 pub fn version() -> &'static str {
     return option_env!("CARGO_PKG_VERSION").unwrap_or("unknown");
@@ -62,6 +58,9 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
 
     let mut flags = [0u8; 1];
     reader.read_exact(&mut flags)?;
+    if flags[0] != EXTRA {
+        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected gzip flags"));
+    }
     header_digest.write(&flags);
 
     let mut modification_time = [0u8; 4];
@@ -77,76 +76,44 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
     header_digest.write(&operating_system);
 
     let mut block_size = 0u16;
-    let mut extra_field_length = 0;
-    if (flags[0] & FEXTRA) != 0 {
-        let mut extra_field_length_bytes = [0u8; 2];
-        reader.read_exact(&mut extra_field_length_bytes)?;
-        extra_field_length = byteorder::LittleEndian::read_u16(&extra_field_length_bytes);
-        debug!(logger, "\tExtra field length of {} bytes", extra_field_length);
-        header_digest.write(&extra_field_length_bytes);
+    let mut extra_field_length_bytes = [0u8; 2];
+    reader.read_exact(&mut extra_field_length_bytes)?;
+    let extra_field_length = byteorder::LittleEndian::read_u16(&extra_field_length_bytes);
+    debug!(logger, "\tExtra field length of {} bytes", extra_field_length);
+    header_digest.write(&extra_field_length_bytes);
 
-        let mut remaining_extra_field_length = extra_field_length;
-        while remaining_extra_field_length > 0 {
-            let mut subfield_identifier = [0u8; 2];
-            reader.read_exact(&mut subfield_identifier)?;
-            header_digest.write(&subfield_identifier);
+    let mut remaining_extra_field_length = extra_field_length;
+    while remaining_extra_field_length > 0 {
+        let mut subfield_identifier = [0u8; 2];
+        reader.read_exact(&mut subfield_identifier)?;
+        header_digest.write(&subfield_identifier);
 
-            let mut subfield_length_bytes = [0u8; 2];
-            reader.read_exact(&mut subfield_length_bytes)?;
-            let subfield_length = byteorder::LittleEndian::read_u16(&subfield_length_bytes);
-            debug!(logger, "\t\tSubfield length of {} bytes", subfield_length);
-            header_digest.write(&subfield_length_bytes);
+        let mut subfield_length_bytes = [0u8; 2];
+        reader.read_exact(&mut subfield_length_bytes)?;
+        let subfield_length = byteorder::LittleEndian::read_u16(&subfield_length_bytes);
+        debug!(logger, "\t\tSubfield length of {} bytes", subfield_length);
+        header_digest.write(&subfield_length_bytes);
 
-            if subfield_identifier == BGZF_IDENTIFIER {
-                debug!(logger, "\t\t\tSubfield is bgzf metadata");
+        if subfield_identifier == BGZF_IDENTIFIER {
+            debug!(logger, "\t\t\tSubfield is bgzf metadata");
 
-                if subfield_length != 2 {
-                    return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size is not a 16 bits number"));
-                }
-
-                let mut block_size_bytes = [0u8; 2];
-                reader.read_exact(&mut block_size_bytes)?;
-                block_size = byteorder::LittleEndian::read_u16(&block_size_bytes) + 1;
-                debug!(logger, "\t\t\t\tbgzf block size is {} bytes", block_size);
-                header_digest.write(&block_size_bytes);
-            } else if (flags[0] & FHCRC) != 0 {
-                let mut subfield = vec![];
-                let mut subfield_reader = reader.take(subfield_length as u64);
-                subfield_reader.read_to_end(&mut subfield)?;
-                header_digest.write(&subfield);
-            } else {
-                reader.seek(SeekFrom::Current(subfield_length as i64))?;
+            if subfield_length != 2 {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size is not a 16 bits number"));
             }
 
-            remaining_extra_field_length -= 4 + subfield_length;
+            let mut block_size_bytes = [0u8; 2];
+            reader.read_exact(&mut block_size_bytes)?;
+            block_size = byteorder::LittleEndian::read_u16(&block_size_bytes) + 1;
+            debug!(logger, "\t\t\t\tbgzf block size is {} bytes", block_size);
+            header_digest.write(&block_size_bytes);
+        } else {
+            reader.seek(SeekFrom::Current(subfield_length as i64))?;
         }
+
+        remaining_extra_field_length -= 4 + subfield_length;
     }
     if block_size == 0 {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size not found in gzip extra field"));
-    }
-
-    if (flags[0] & FNAME) != 0 {
-        let mut file_name = vec![];
-        reader.read_until(0u8, &mut file_name)?;
-        debug!(logger, "\tFile name is \"{}\"", str::from_utf8(&file_name).unwrap_or("<invalid_encoding>"));
-        header_digest.write(&file_name);
-    }
-
-    if (flags[0] & FCOMMENT) != 0 {
-        let mut file_comment = vec![];
-        reader.read_until(0u8, &mut file_comment)?;
-        debug!(logger, "\tFile comment is \"{}\"", str::from_utf8(&file_comment).unwrap_or("<invalid_encoding>"));
-        header_digest.write(&file_comment);
-    }
-
-    if (flags[0] & FHCRC) != 0 {
-        let mut header_crc16 = [0u8; 2];
-        reader.read_exact(&mut header_crc16)?;
-        let header_crc32 = header_digest.sum32();
-        if header_crc16[0] != ((header_crc32 & 0xff) as u8) ||
-           header_crc16[1] != (((header_crc32 >> 8) & 0xff) as u8) {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect header CRC16"));
-        }
     }
 
     let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
