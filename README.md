@@ -34,22 +34,23 @@ Copy the `bamrescue` binary wherever you want.
 ## Usage
 
 ```console
-Usage: bamrescue check <bamfile>
+Usage: bamrescue check [--quiet] <bamfile>
        bamrescue repair <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
 Commands:
-    check       Check BAM file for corruption.
-    repair      Keep only non-corrupted blocks of BAM file.
+    check        Check BAM file for corruption.
+    repair       Keep only non-corrupted blocks of BAM file.
 
 Arguments:
-    bamfile     BAM file to check or repair.
-    output      Repaired BAM file.
+    bamfile      BAM file to check or repair.
+    output       Repaired BAM file.
 
 Options:
-    -h, --help  Show this screen.
-    --version   Show version.
+    -h, --help   Show this screen.
+	-q, --quiet  Do not output statistics, stop at first error.
+    --version    Show version.
 ```
 
 ## Contributing and reporting bugs

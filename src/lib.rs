@@ -1,6 +1,7 @@
 extern crate byteorder;
 extern crate crc;
 extern crate inflate;
+extern crate number_prefix;
 #[macro_use]
 extern crate slog;
 
@@ -9,12 +10,16 @@ use byteorder::ReadBytesExt;
 use crc::crc32::Hasher32;
 
 use std::fs::File;
-use std::io::BufReader;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
+
+use std::io::{
+    BufReader,
+    Error,
+    ErrorKind,
+    Read,
+    Seek,
+    SeekFrom
+};
+
 use std::str;
 
 const GZIP_IDENTIFIER: [u8; 2] = [0x1f, 0x8b];
@@ -33,7 +38,7 @@ enum BGZFBlockInformation {
     Size(u32)
 }
 
-fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
+fn check_block_header(reader: &mut BufReader<File>, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
     let mut gzip_identifier = [0u8; 2];
     let read_bytes = reader.read(&mut gzip_identifier)?;
     if read_bytes == 0 {
@@ -42,8 +47,6 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
     if read_bytes != 2 || gzip_identifier != GZIP_IDENTIFIER {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip identitifer not found"));
     }
-    *blocks_count += 1;
-    debug!(logger, "Checking block {}", blocks_count);
 
     let mut compression_method = [0u8; 1];
     reader.read_exact(&mut compression_method)?;
@@ -98,18 +101,22 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size not found in gzip extra field"));
     }
 
+    Ok(BGZFBlockInformation::Size((block_size - extra_field_length - 20u16) as u32))
+}
+
+fn check_block_payload(reader: &mut BufReader<File>, deflated_payload_size: u32, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
     let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
-    let payload_size;
+    let inflated_payload_size;
     {
         let mut deflated_bytes = vec![];
-        let mut deflate_reader = reader.take((block_size - extra_field_length - 20u16) as u64);
+        let mut deflate_reader = reader.take(deflated_payload_size as u64);
         deflate_reader.read_to_end(&mut deflated_bytes)?;
         let inflated_bytes = match inflate::inflate_bytes(&deflated_bytes) {
             Ok(inflated_bytes) => inflated_bytes,
             Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload: {}", error))),
         };
         payload_digest.write(&inflated_bytes);
-        payload_size = inflated_bytes.len();
+        inflated_payload_size = inflated_bytes.len();
     }
 
     let mut data_crc32 = [0u8; 4];
@@ -117,40 +124,107 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
     let payload_crc32 = payload_digest.sum32();
 
     if data_crc32[0] != ((payload_crc32 & 0xff) as u8) ||
-       data_crc32[1] != (((payload_crc32 >> 8) & 0xff) as u8) ||
-       data_crc32[2] != (((payload_crc32 >> 16) & 0xff) as u8) ||
-       data_crc32[3] != (((payload_crc32 >> 24) & 0xff) as u8) {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload CRC32"));
-    }
+        data_crc32[1] != (((payload_crc32 >> 8) & 0xff) as u8) ||
+        data_crc32[2] != (((payload_crc32 >> 16) & 0xff) as u8) ||
+        data_crc32[3] != (((payload_crc32 >> 24) & 0xff) as u8) {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload CRC32"));
+        }
 
     let data_size = reader.read_u32::<byteorder::LittleEndian>()?;
     debug!(logger, "\tData size is {} bytes", data_size);
-    if data_size as usize != payload_size {
+    if data_size as usize != inflated_payload_size {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload size"));
     }
 
-    debug!(logger, "\tAt offset {}", reader.seek(SeekFrom::Current(0))?);
-
-    return Ok(BGZFBlockInformation::Size(data_size));
+    Ok(BGZFBlockInformation::Size(data_size))
 }
 
-pub fn check(bamfile: &str, logger: &slog::Logger) -> Result<(), Error> {
+fn check_block(reader: &mut BufReader<File>, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
+    let deflated_payload_size = match check_block_header(reader, &logger)? {
+        BGZFBlockInformation::EOF => return Ok(BGZFBlockInformation::EOF),
+        BGZFBlockInformation::Size(deflated_payload_size) => deflated_payload_size,
+    };
+
+    let payload_position = reader.seek(SeekFrom::Current(0i64))?;
+
+    match check_block_payload(reader, deflated_payload_size, &logger) {
+        Ok(bgzf_information) => Ok(bgzf_information),
+        Err(error) => {
+            reader.seek(SeekFrom::Start(payload_position + deflated_payload_size as u64 + 8u64))?;
+            Err(error)
+        }
+    }
+}
+
+pub fn check(bamfile: &str, quiet: bool, logger: &slog::Logger) -> Result<(), Error> {
     info!(logger, "Checking integrity of {}…", bamfile);
 
     let mut reader = BufReader::new(File::open(bamfile)?);
 
     let mut blocks_count = 0u64;
+    let mut blocks_size = 0u64;
+    let mut bad_blocks_count = 0u64;
+    let mut bad_blocks_size = 0u64;
+    let mut truncated = false;
     let mut data_size = 0u32;
     loop {
-        data_size = match check_block(&mut reader, &mut blocks_count, &logger)? {
-            BGZFBlockInformation::EOF => if data_size == 0u32 { break } else { return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty")); },
-            BGZFBlockInformation::Size(data_size) => data_size,
-        };
+        let block_offset = reader.seek(SeekFrom::Current(0))?;
+        debug!(logger, "Checking block {} at offset {}", blocks_count + 1, block_offset);
+
+        match check_block(&mut reader, &logger) {
+            Ok(bgzf_size) => {
+                data_size = match bgzf_size {
+                    BGZFBlockInformation::EOF => {
+                        if data_size != 0u32 {
+                            truncated = true;
+                            if quiet {
+                                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty"));
+                            }
+                        }
+                        break
+                    },
+                    BGZFBlockInformation::Size(data_size) => data_size,
+                };
+            },
+            Err(error) => {
+                if quiet {
+                    return Err(error);
+                }
+                bad_blocks_count += 1;
+                let current_offset = reader.seek(SeekFrom::Current(0))?;
+                bad_blocks_size += current_offset - block_offset;
+            }
+        }
+
+
+        blocks_count += 1;
+        blocks_size += data_size as u64;
     }
 
-    println!("bam file statistics:");
-    println!("{: >7} bgzf blocks found", blocks_count);
-    println!("{: >7} corrupted blocks found", 0);
+    if !quiet {
+        println!("bam file statistics:");
+        match number_prefix::binary_prefix(blocks_size as f64) {
+            number_prefix::Standalone(_) => println!("{: >7} bgzf {} found ({} {} of bam payload)", blocks_count, if blocks_count > 1 { "blocks" } else { "block" }, blocks_size, if blocks_size > 1 { "bytes" } else { "byte" }),
+            number_prefix::Prefixed(prefix, number) => println!("{: >7} bgzf {} found ({:.0} {}B of bam payload)", blocks_count, if blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
+        }
+        println!("{: >7} corrupted {} found ({:.2}% of total)", bad_blocks_count, if bad_blocks_count > 1 { "blocks" } else { "block" }, (bad_blocks_count * 100) / blocks_count);
+        match number_prefix::binary_prefix(bad_blocks_size as f64) {
+            number_prefix::Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", bad_blocks_size, if bad_blocks_size > 1 { "bytes" } else { "byte" }, (bad_blocks_size * 100) / blocks_size),
+            number_prefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, (bad_blocks_size * 100) / blocks_size),
+        }
+        if truncated {
+            println!("        file truncated");
+        }
+    }
+
+    if bad_blocks_count > 0 {
+        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: corrupted bgzf blocks found"));
+    }
+
+    if truncated {
+        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty"));
+    }
+
     Ok(())
 }
 
