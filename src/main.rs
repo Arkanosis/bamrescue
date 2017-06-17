@@ -11,17 +11,17 @@ use std::process;
 
 const USAGE: &str = "
 Usage: bamrescue check [--quiet] <bamfile>
-       bamrescue repair <bamfile> <output>
+       bamrescue rescue <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
 Commands:
     check        Check BAM file for corruption.
-    repair       Keep only non-corrupted blocks of BAM file.
+    rescue       Keep only non-corrupted blocks of BAM file.
 
 Arguments:
-    bamfile      BAM file to check or repair.
-    output       Repaired BAM file.
+    bamfile      BAM file to check or rescue.
+    output       Rescued BAM file.
 
 Options:
     -h, --help   Show this screen.
@@ -32,7 +32,7 @@ Options:
 #[derive(RustcDecodable)]
 struct Args {
     cmd_check: bool,
-    cmd_repair: bool,
+    cmd_rescue: bool,
     arg_bamfile: String,
     arg_output: String,
     flag_quiet: bool,
@@ -60,13 +60,13 @@ fn main() {
         println!("bamrescue v{}", bamrescue::version());
     } else if args.cmd_check {
         bamrescue::check(&args.arg_bamfile, args.flag_quiet, &logger).unwrap_or_else(|cause| {
-            error!(logger, "Invalid bam file: {}", cause);
+            error!(logger, "{}", cause);
             drop(logger);
             process::exit(1);
         });
-    } else if args.cmd_repair {
-        bamrescue::repair(&args.arg_bamfile, &args.arg_output, &logger).unwrap_or_else(|cause| {
-            error!(logger, "Unable to repair bam file: {}", cause);
+    } else if args.cmd_rescue {
+        bamrescue::rescue(&args.arg_bamfile, &args.arg_output, &logger).unwrap_or_else(|cause| {
+            error!(logger, "Unable to rescue bam file: {}", cause);
             drop(logger);
             process::exit(1);
         });

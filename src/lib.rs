@@ -228,9 +228,9 @@ pub fn check(bamfile: &str, quiet: bool, logger: &slog::Logger) -> Result<(), Er
     Ok(())
 }
 
-pub fn repair(bamfile: &str, output: &str, logger: &slog::Logger) -> Result<(), Error> {
-    info!(logger, "Repairing {} and writing output to {}…", bamfile, output);
+pub fn rescue(bamfile: &str, output: &str, logger: &slog::Logger) -> Result<(), Error> {
+    info!(logger, "Rescuing {} and writing output to {}…", bamfile, output);
 
-    error!(logger, "bamrescue::repair() is not yet implemented");
+    error!(logger, "bamrescue::rescue() is not yet implemented");
     unimplemented!();
 }

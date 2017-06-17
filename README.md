@@ -23,6 +23,56 @@ and acceptable reliability.
 This property is used to rescue data from corrupted BAM files by keeping only
 their non-corrupted blocks, hopefully rescuing most reads.
 
+## Example
+
+A bam file of 40 MiB (which is very small by today standards) has been
+corrupted by two hard drive bad sectors. Most tools (including gzip) choke on
+the file at the first corrupted byte, meaning that up to 100% of the bam
+payload is considered lost depending on the tool.
+
+Let's check the file using bamrescue:
+
+    $ bamrescue check samples/corrupted_payload.bam
+
+The output is the following:
+
+    Jun 17 23:06:48.840 INFO Checking integrity of samples/corrupted_payload.bam…
+    bam file statistics:
+       1870 bgzf blocks found (117 MiB of bam payload)
+          2 corrupted blocks found (0% of total)
+         46 KiB of bam payload lost (0% of total)
+    Jun 17 23:07:10.555 ERRO Invalid bam file: corrupted bgzf blocks found
+
+Indeed, a whole hard drive bad sector typically amounts for 512 bytes lost,
+which is much smaller than an average bgzf block (which can be up to 64 KiB
+large).
+
+Even though most tools would gave up on this file, it still contains almost
+100% of non-corrupted bam payload, and the user probably wouldn't mind much if
+they could work only on that close-to-100% amount of data.
+
+Let's rescue the non-corrupted payload (beware: this takes as much additional
+space on the disk as the original file):
+
+    $ bamrescue rescue samples/corrupted_payload.bam rescued_file.bam
+
+The output is the following:
+
+    Jun 17 23:06:48.840 INFO Rescuing data from samples/corrupted_payload.bam…
+    bam rescue statistics:
+       1870 bgzf blocks found (117 MiB of bam payload)
+          2 corrupted blocks removed (0% of total)
+         46 KiB of bam payload lost (0% of total)
+       1868 non-corrupted blocks rescued (almost 100% of total)
+        111 MiB of bam payload rescued (almost 100% of total)
+    Jun 17 23:07:10.555 ERRO INFO Data rescued to rescued_file.bam
+
+The resulting bam file can now be used like if it never had been corrupted.
+Rescued data is validated using a CRC32 checksum, so it's not like ignoring
+errors and working on corrupted data (typical use of gzip to get garbage data
+from a corrupted bam file): it's working on (ridiculously) less, validated
+data.
+
 ## Compilation
 
 Run `cargo build --release` in your working copy.
@@ -35,17 +85,17 @@ Copy the `bamrescue` binary wherever you want.
 
 ```console
 Usage: bamrescue check [--quiet] <bamfile>
-       bamrescue repair <bamfile> <output>
+       bamrescue rescue <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
 Commands:
     check        Check BAM file for corruption.
-    repair       Keep only non-corrupted blocks of BAM file.
+    rescue       Keep only non-corrupted blocks of BAM file.
 
 Arguments:
-    bamfile      BAM file to check or repair.
-    output       Repaired BAM file.
+    bamfile      BAM file to check or rescue.
+    output       rescueed BAM file.
 
 Options:
     -h, --help   Show this screen.
