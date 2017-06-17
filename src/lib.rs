@@ -4,7 +4,6 @@ extern crate inflate;
 #[macro_use]
 extern crate slog;
 
-use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
 
 use crc::crc32::Hasher32;
@@ -35,8 +34,6 @@ enum BGZFBlockInformation {
 }
 
 fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
-    let mut header_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
-
     let mut gzip_identifier = [0u8; 2];
     let read_bytes = reader.read(&mut gzip_identifier)?;
     if read_bytes == 0 {
@@ -47,52 +44,40 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
     }
     *blocks_count += 1;
     debug!(logger, "Checking block {}", blocks_count);
-    header_digest.write(&gzip_identifier);
 
     let mut compression_method = [0u8; 1];
     reader.read_exact(&mut compression_method)?;
     if compression_method[0] != DEFLATE {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip compression method is not deflate"));
     }
-    header_digest.write(&compression_method);
 
     let mut flags = [0u8; 1];
     reader.read_exact(&mut flags)?;
     if flags[0] != EXTRA {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected gzip flags"));
     }
-    header_digest.write(&flags);
 
     let mut modification_time = [0u8; 4];
     reader.read_exact(&mut modification_time)?;
-    header_digest.write(&modification_time);
 
     let mut extra_flags = [0u8; 1];
     reader.read_exact(&mut extra_flags)?;
-    header_digest.write(&extra_flags);
 
     let mut operating_system = [0u8; 1];
     reader.read_exact(&mut operating_system)?;
-    header_digest.write(&operating_system);
 
     let mut block_size = 0u16;
-    let mut extra_field_length_bytes = [0u8; 2];
-    reader.read_exact(&mut extra_field_length_bytes)?;
-    let extra_field_length = byteorder::LittleEndian::read_u16(&extra_field_length_bytes);
+
+    let extra_field_length = reader.read_u16::<byteorder::LittleEndian>()?;
     debug!(logger, "\tExtra field length of {} bytes", extra_field_length);
-    header_digest.write(&extra_field_length_bytes);
 
     let mut remaining_extra_field_length = extra_field_length;
     while remaining_extra_field_length > 0 {
         let mut subfield_identifier = [0u8; 2];
         reader.read_exact(&mut subfield_identifier)?;
-        header_digest.write(&subfield_identifier);
 
-        let mut subfield_length_bytes = [0u8; 2];
-        reader.read_exact(&mut subfield_length_bytes)?;
-        let subfield_length = byteorder::LittleEndian::read_u16(&subfield_length_bytes);
+        let subfield_length = reader.read_u16::<byteorder::LittleEndian>()?;
         debug!(logger, "\t\tSubfield length of {} bytes", subfield_length);
-        header_digest.write(&subfield_length_bytes);
 
         if subfield_identifier == BGZF_IDENTIFIER {
             debug!(logger, "\t\t\tSubfield is bgzf metadata");
@@ -101,11 +86,8 @@ fn check_block(reader: &mut BufReader<File>, blocks_count: &mut u64, logger: &sl
                 return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size is not a 16 bits number"));
             }
 
-            let mut block_size_bytes = [0u8; 2];
-            reader.read_exact(&mut block_size_bytes)?;
-            block_size = byteorder::LittleEndian::read_u16(&block_size_bytes) + 1;
+            block_size = reader.read_u16::<byteorder::LittleEndian>()? + 1;
             debug!(logger, "\t\t\t\tbgzf block size is {} bytes", block_size);
-            header_digest.write(&block_size_bytes);
         } else {
             reader.seek(SeekFrom::Current(subfield_length as i64))?;
         }
