@@ -107,33 +107,36 @@ fn check_block_header(reader: &mut Rescuable, logger: &slog::Logger) -> Result<B
 }
 
 fn check_block_payload(reader: &mut Rescuable, deflated_payload_size: u32, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
-    let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
-    let inflated_payload_size;
+    let mut deflated_bytes = vec![];
     {
-        let mut deflated_bytes = vec![];
         let mut deflate_reader = reader.take(deflated_payload_size as u64);
         deflate_reader.read_to_end(&mut deflated_bytes)?;
-        let inflated_bytes = match inflate::inflate_bytes(&deflated_bytes) {
-            Ok(inflated_bytes) => inflated_bytes,
-            Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload: {}", error))),
-        };
-        payload_digest.write(&inflated_bytes);
-        inflated_payload_size = inflated_bytes.len();
     }
 
     let mut data_crc32 = [0u8; 4];
     reader.read_exact(&mut data_crc32)?;
-    let payload_crc32 = payload_digest.sum32();
-
-    if data_crc32[0] != ((payload_crc32 & 0xff) as u8) ||
-        data_crc32[1] != (((payload_crc32 >> 8) & 0xff) as u8) ||
-        data_crc32[2] != (((payload_crc32 >> 16) & 0xff) as u8) ||
-        data_crc32[3] != (((payload_crc32 >> 24) & 0xff) as u8) {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload CRC32"));
-        }
 
     let data_size = reader.read_u32::<byteorder::LittleEndian>()?;
     debug!(logger, "\tData size is {} bytes", data_size);
+
+    let inflated_bytes = match inflate::inflate_bytes(&deflated_bytes) {
+        Ok(inflated_bytes) => inflated_bytes,
+        Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload: {}", error))),
+    };
+
+    let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
+    payload_digest.write(&inflated_bytes);
+    let payload_crc32 = payload_digest.sum32();
+
+    if data_crc32[0] != ((payload_crc32 & 0xff) as u8) ||
+       data_crc32[1] != (((payload_crc32 >> 8) & 0xff) as u8) ||
+       data_crc32[2] != (((payload_crc32 >> 16) & 0xff) as u8) ||
+       data_crc32[3] != (((payload_crc32 >> 24) & 0xff) as u8) {
+        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload CRC32"));
+    }
+
+    let inflated_payload_size = inflated_bytes.len();
+
     if data_size as usize != inflated_payload_size {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload size"));
     }
