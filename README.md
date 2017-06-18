@@ -73,6 +73,15 @@ errors and working on corrupted data (typical use of gzip to get garbage data
 from a corrupted bam file): it's working on (ridiculously) less, validated
 data.
 
+## Caveats
+
+bamrescue does not check whether the bam payload of the file is actually
+compliant with the bam specification. It only checks if it has not been
+corrupted after creation, using the error detection codes built in the gzip
+and bgzf formats. This means that as long as the tool used to create a bam
+file was compliant with the specification, the output of bamrescue will be as
+well, but bamrescue itself will do nothing to validate that compliance.
+
 ## Compilation
 
 Run `cargo build --release` in your working copy.
