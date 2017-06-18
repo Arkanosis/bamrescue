@@ -7,6 +7,11 @@ extern crate slog_async;
 extern crate slog_term;
 
 use slog::Drain;
+
+use std::fs::File;
+
+use std::io::BufReader;
+
 use std::process;
 
 const USAGE: &str = "
@@ -59,13 +64,21 @@ fn main() {
     if args.flag_version {
         println!("bamrescue v{}", bamrescue::version());
     } else if args.cmd_check {
-        bamrescue::check(&args.arg_bamfile, args.flag_quiet, &logger).unwrap_or_else(|cause| {
+        File::open(&args.arg_bamfile).and_then(|bamfile| {
+            let mut reader = BufReader::new(&bamfile);
+            bamrescue::check(&mut reader, args.flag_quiet, &logger)
+        }).unwrap_or_else(|cause| {
             error!(logger, "{}", cause);
             drop(logger);
             process::exit(1);
         });
     } else if args.cmd_rescue {
-        bamrescue::rescue(&args.arg_bamfile, &args.arg_output, &logger).unwrap_or_else(|cause| {
+        File::open(&args.arg_bamfile).and_then(|bamfile| {
+            File::create(&args.arg_output).and_then(|mut output| {
+                let mut reader = BufReader::new(&bamfile);
+                bamrescue::rescue(&mut reader, &mut output, &logger)
+            })
+        }).unwrap_or_else(|cause| {
             error!(logger, "Unable to rescue bam file: {}", cause);
             drop(logger);
             process::exit(1);

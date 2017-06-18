@@ -9,15 +9,14 @@ use byteorder::ReadBytesExt;
 
 use crc::crc32::Hasher32;
 
-use std::fs::File;
-
 use std::io::{
-    BufReader,
+    BufRead,
     Error,
     ErrorKind,
     Read,
     Seek,
-    SeekFrom
+    SeekFrom,
+    Write
 };
 
 use std::str;
@@ -38,7 +37,10 @@ enum BGZFBlockInformation {
     Size(u32)
 }
 
-fn check_block_header(reader: &mut BufReader<File>, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
+pub trait Rescuable: BufRead + Seek {}
+impl<T: BufRead + Seek> Rescuable for T {}
+
+fn check_block_header(reader: &mut Rescuable, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
     let mut gzip_identifier = [0u8; 2];
     let read_bytes = reader.read(&mut gzip_identifier)?;
     if read_bytes == 0 {
@@ -104,7 +106,7 @@ fn check_block_header(reader: &mut BufReader<File>, logger: &slog::Logger) -> Re
     Ok(BGZFBlockInformation::Size((block_size - extra_field_length - 20u16) as u32))
 }
 
-fn check_block_payload(reader: &mut BufReader<File>, deflated_payload_size: u32, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
+fn check_block_payload(reader: &mut Rescuable, deflated_payload_size: u32, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
     let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
     let inflated_payload_size;
     {
@@ -139,7 +141,7 @@ fn check_block_payload(reader: &mut BufReader<File>, deflated_payload_size: u32,
     Ok(BGZFBlockInformation::Size(data_size))
 }
 
-fn check_block(reader: &mut BufReader<File>, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
+fn check_block(reader: &mut Rescuable, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
     let deflated_payload_size = match check_block_header(reader, &logger)? {
         BGZFBlockInformation::EOF => return Ok(BGZFBlockInformation::EOF),
         BGZFBlockInformation::Size(deflated_payload_size) => deflated_payload_size,
@@ -156,10 +158,8 @@ fn check_block(reader: &mut BufReader<File>, logger: &slog::Logger) -> Result<BG
     }
 }
 
-pub fn check(bamfile: &str, quiet: bool, logger: &slog::Logger) -> Result<(), Error> {
-    info!(logger, "Checking integrity of {}…", bamfile);
-
-    let mut reader = BufReader::new(File::open(bamfile)?);
+pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Result<(), Error> {
+    info!(logger, "Checking integrity…");
 
     let mut blocks_count = 0u64;
     let mut blocks_size = 0u64;
@@ -171,7 +171,7 @@ pub fn check(bamfile: &str, quiet: bool, logger: &slog::Logger) -> Result<(), Er
         let block_offset = reader.seek(SeekFrom::Current(0))?;
         debug!(logger, "Checking block {} at offset {}", blocks_count + 1, block_offset);
 
-        match check_block(&mut reader, &logger) {
+        match check_block(reader, &logger) {
             Ok(bgzf_size) => {
                 data_size = match bgzf_size {
                     BGZFBlockInformation::EOF => {
@@ -228,8 +228,8 @@ pub fn check(bamfile: &str, quiet: bool, logger: &slog::Logger) -> Result<(), Er
     Ok(())
 }
 
-pub fn rescue(bamfile: &str, output: &str, logger: &slog::Logger) -> Result<(), Error> {
-    info!(logger, "Rescuing {} and writing output to {}…", bamfile, output);
+pub fn rescue(reader: &mut Rescuable, writer: &mut Write, logger: &slog::Logger) -> Result<(), Error> {
+    info!(logger, "Rescuing file…");
 
     error!(logger, "bamrescue::rescue() is not yet implemented");
     unimplemented!();
