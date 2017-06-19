@@ -210,10 +210,10 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
             number_prefix::Standalone(_) => println!("{: >7} bgzf {} found ({} {} of bam payload)", blocks_count, if blocks_count > 1 { "blocks" } else { "block" }, blocks_size, if blocks_size > 1 { "bytes" } else { "byte" }),
             number_prefix::Prefixed(prefix, number) => println!("{: >7} bgzf {} found ({:.0} {}B of bam payload)", blocks_count, if blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
         }
-        println!("{: >7} corrupted {} found ({:.2}% of total)", bad_blocks_count, if bad_blocks_count > 1 { "blocks" } else { "block" }, (bad_blocks_count * 100) / blocks_count);
+        println!("{: >7} corrupted {} found ({:.2}% of total)", bad_blocks_count, if bad_blocks_count > 1 { "blocks" } else { "block" }, if blocks_count > 0 { (bad_blocks_count * 100) / blocks_count } else { 0 });
         match number_prefix::binary_prefix(bad_blocks_size as f64) {
-            number_prefix::Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", bad_blocks_size, if bad_blocks_size > 1 { "bytes" } else { "byte" }, (bad_blocks_size * 100) / blocks_size),
-            number_prefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, (bad_blocks_size * 100) / blocks_size),
+            number_prefix::Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", bad_blocks_size, if bad_blocks_size > 1 { "bytes" } else { "byte" }, if blocks_size > 0 { (bad_blocks_size * 100) / blocks_size } else { 0 }),
+            number_prefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, if blocks_size > 0 { (bad_blocks_size * 100) / blocks_size } else { 0 }),
         }
         if truncated {
             println!("        file truncated");
