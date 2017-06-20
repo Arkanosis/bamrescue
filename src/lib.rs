@@ -188,6 +188,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                     },
                     BGZFBlockInformation::Size(data_size) => data_size,
                 };
+                blocks_size += data_size as u64;
             },
             Err(error) => {
                 if quiet {
@@ -195,13 +196,13 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 }
                 bad_blocks_count += 1;
                 let current_offset = reader.seek(SeekFrom::Current(0))?;
+                blocks_size += current_offset - block_offset;
                 bad_blocks_size += current_offset - block_offset;
             }
         }
 
 
         blocks_count += 1;
-        blocks_size += data_size as u64;
     }
 
     if !quiet {
