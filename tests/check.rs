@@ -69,12 +69,24 @@ fn two_blocks_missing_empty_bam() {
 
 #[test]
 #[should_panic]
-fn three_blocks_bad_payload_crc32_bam() {
-    check(&mut common::three_blocks_bad_payload_crc32_bam())
+fn three_blocks_bad_inflated_payload_crc32_bam() {
+    check(&mut common::three_blocks_bad_inflated_payload_crc32_bam())
 }
 
 #[test]
 #[should_panic]
-fn three_blocks_bad_payload_size_bam() {
-    check(&mut common::three_blocks_bad_payload_size_bam())
+fn three_blocks_bad_inflated_payload_size_bam() {
+    check(&mut common::three_blocks_bad_inflated_payload_size_bam())
+}
+
+#[test]
+#[should_panic]
+fn three_blocks_too_small_deflated_payload_size_bam() {
+    check(&mut common::three_blocks_too_small_deflated_payload_size_bam())
+}
+
+#[test]
+#[should_panic]
+fn three_blocks_too_large_deflated_payload_size_bam() {
+    check(&mut common::three_blocks_too_large_deflated_payload_size_bam())
 }

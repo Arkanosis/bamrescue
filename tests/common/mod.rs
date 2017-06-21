@@ -12,7 +12,8 @@ use slog::{
     Logger
 };
 
-fn bgzf_block(deflated_payload: Vec<u8>, inflated_payload_size: u32, inflated_payload_crc32: u32) -> Vec<u8> {
+// TODO also generate bgzf blocks with extra gzip subfields
+fn bgzf_block(deflated_payload: Vec<u8>, inflated_payload_size: u32, inflated_payload_crc32: u32, deflated_payload_size_delta: i32) -> Vec<u8> {
     let mut data = vec![
         0x1f, 0x8b,             // gzip identifier
         0x08,                   // method (deflate)
@@ -25,7 +26,7 @@ fn bgzf_block(deflated_payload: Vec<u8>, inflated_payload_size: u32, inflated_pa
         0x02, 0x00,             // extra subfield length (2 bytes)
     ];
 
-    data.write_u16::<LittleEndian>(deflated_payload.len() as u16 + 25u16).unwrap(); // bgzf block size, minus 1
+    data.write_u16::<LittleEndian>((deflated_payload.len() as i32 + 25i32 + deflated_payload_size_delta) as u16).unwrap(); // bgzf block size, minus 1
 
     data.extend(deflated_payload);
     data.write_u32::<LittleEndian>(inflated_payload_crc32).unwrap();
@@ -37,25 +38,37 @@ fn bgzf_block(deflated_payload: Vec<u8>, inflated_payload_size: u32, inflated_pa
 pub fn empty_bgzf_block() -> Vec<u8> {
     bgzf_block(vec![
         0x03, 0x00 // deflated empty string
-    ], 0, 0)
+    ], 0, 0, 0)
 }
 
 pub fn regular_bgzf_block() -> Vec<u8> {
     bgzf_block(vec![
         0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
-    ], 5, 907060870)
+    ], 5, 907060870, 0)
 }
 
-pub fn bad_payload_crc32_bgzf_block() -> Vec<u8> {
+pub fn bad_inflated_payload_crc32_bgzf_block() -> Vec<u8> {
     bgzf_block(vec![
         0xcb, 0x48, 0x25, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
-    ], 5, 907060870)
+    ], 5, 907060870, 0)
 }
 
-pub fn bad_payload_size_bgzf_block() -> Vec<u8> {
+pub fn bad_inflated_payload_size_bgzf_block() -> Vec<u8> {
     bgzf_block(vec![
         0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
-    ], 25, 907060870)
+    ], 25, 907060870, 0)
+}
+
+pub fn too_small_deflated_payload_size_bgzf_block() -> Vec<u8> {
+    bgzf_block(vec![
+        0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
+    ], 25, 907060870, -5i32)
+}
+
+pub fn too_large_deflated_payload_size_bgzf_block() -> Vec<u8> {
+    bgzf_block(vec![
+        0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
+    ], 25, 907060870, -5i32)
 }
 
 pub fn null_logger() -> Logger {
@@ -124,19 +137,37 @@ pub fn two_blocks_missing_empty_bam() -> Cursor<Vec<u8>> {
     Cursor::new(data)
 }
 
-pub fn three_blocks_bad_payload_crc32_bam() -> Cursor<Vec<u8>> {
+pub fn three_blocks_bad_inflated_payload_crc32_bam() -> Cursor<Vec<u8>> {
     let mut data = regular_bgzf_block();
     data.extend(regular_bgzf_block());
-    data.extend(bad_payload_crc32_bgzf_block());
+    data.extend(bad_inflated_payload_crc32_bgzf_block());
     data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
     Cursor::new(data)
 }
 
-pub fn three_blocks_bad_payload_size_bam() -> Cursor<Vec<u8>> {
+pub fn three_blocks_bad_inflated_payload_size_bam() -> Cursor<Vec<u8>> {
     let mut data = regular_bgzf_block();
     data.extend(regular_bgzf_block());
-    data.extend(bad_payload_size_bgzf_block());
+    data.extend(bad_inflated_payload_size_bgzf_block());
+    data.extend(regular_bgzf_block());
+    data.extend(empty_bgzf_block());
+    Cursor::new(data)
+}
+
+pub fn three_blocks_too_small_deflated_payload_size_bam() -> Cursor<Vec<u8>> {
+    let mut data = regular_bgzf_block();
+    data.extend(regular_bgzf_block());
+    data.extend(too_small_deflated_payload_size_bgzf_block());
+    data.extend(regular_bgzf_block());
+    data.extend(empty_bgzf_block());
+    Cursor::new(data)
+}
+
+pub fn three_blocks_too_large_deflated_payload_size_bam() -> Cursor<Vec<u8>> {
+    let mut data = regular_bgzf_block();
+    data.extend(regular_bgzf_block());
+    data.extend(too_large_deflated_payload_size_bgzf_block());
     data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
     Cursor::new(data)
