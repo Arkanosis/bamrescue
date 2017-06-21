@@ -106,7 +106,6 @@ pub fn three_blocks_bam() -> Cursor<Vec<u8>> {
 
 pub fn three_blocks_empty_inside_bam() -> Cursor<Vec<u8>> {
     let mut data = regular_bgzf_block();
-    data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
     data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
@@ -139,7 +138,6 @@ pub fn two_blocks_missing_empty_bam() -> Cursor<Vec<u8>> {
 
 pub fn three_blocks_bad_inflated_payload_crc32_bam() -> Cursor<Vec<u8>> {
     let mut data = regular_bgzf_block();
-    data.extend(regular_bgzf_block());
     data.extend(bad_inflated_payload_crc32_bgzf_block());
     data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
@@ -148,7 +146,6 @@ pub fn three_blocks_bad_inflated_payload_crc32_bam() -> Cursor<Vec<u8>> {
 
 pub fn three_blocks_bad_inflated_payload_size_bam() -> Cursor<Vec<u8>> {
     let mut data = regular_bgzf_block();
-    data.extend(regular_bgzf_block());
     data.extend(bad_inflated_payload_size_bgzf_block());
     data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
@@ -156,18 +153,16 @@ pub fn three_blocks_bad_inflated_payload_size_bam() -> Cursor<Vec<u8>> {
 }
 
 pub fn three_blocks_too_small_deflated_payload_size_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
+    let mut data = too_small_deflated_payload_size_bgzf_block();
     data.extend(regular_bgzf_block());
-    data.extend(too_small_deflated_payload_size_bgzf_block());
     data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
     Cursor::new(data)
 }
 
 pub fn three_blocks_too_large_deflated_payload_size_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
+    let mut data = too_large_deflated_payload_size_bgzf_block();
     data.extend(regular_bgzf_block());
-    data.extend(too_large_deflated_payload_size_bgzf_block());
     data.extend(regular_bgzf_block());
     data.extend(empty_bgzf_block());
     Cursor::new(data)
