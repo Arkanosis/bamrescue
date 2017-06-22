@@ -15,7 +15,6 @@ use std::io::{
     ErrorKind,
     Read,
     Seek,
-    SeekFrom,
     Write
 };
 
@@ -26,137 +25,46 @@ const BGZF_IDENTIFIER: [u8; 2] = [0x42, 0x43];
 
 const DEFLATE: u8 = 8;
 
-const EXTRA: u8 = 1 << 2;
+const FEXTRA: u8 = 1 << 2;
 
 pub fn version() -> &'static str {
     return option_env!("CARGO_PKG_VERSION").unwrap_or("unknown");
 }
 
-enum BGZFBlockInformation {
-    EOF,
-    Size(u32)
-}
-
 pub trait Rescuable: BufRead + Seek {}
 impl<T: BufRead + Seek> Rescuable for T {}
 
-fn check_block_header(reader: &mut Rescuable, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
-    let mut gzip_identifier = [0u8; 2];
-    let read_bytes = reader.read(&mut gzip_identifier)?;
-    if read_bytes == 0 {
-        return Ok(BGZFBlockInformation::EOF);
-    }
-    if read_bytes != 2 || gzip_identifier != GZIP_IDENTIFIER {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip identitifer not found"));
-    }
+struct BGZFBlock {
+    id: u64,
+    header_bytes: Vec<u8>,
+    deflated_payload_bytes: Vec<u8>,
+    inflated_payload_crc32: u32,
+    inflated_payload_size: u32,
+}
 
-    let mut compression_method = [0u8; 1];
-    reader.read_exact(&mut compression_method)?;
-    if compression_method[0] != DEFLATE {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip compression method is not deflate"));
-    }
+fn check_payload(block: &Option<BGZFBlock>) -> Result<(), Error> {
+    match *block {
+        None => Ok(()),
+        Some(ref block) => {
+            let inflated_payload_bytes = match inflate::inflate_bytes(&block.deflated_payload_bytes) {
+                Ok(inflated_payload_bytes) => inflated_payload_bytes,
+                Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload of block {}: {}", block.id, error))),
+            };
 
-    let mut flags = [0u8; 1];
-    reader.read_exact(&mut flags)?;
-    if flags[0] != EXTRA {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected gzip flags"));
-    }
-
-    let mut modification_time = [0u8; 4];
-    reader.read_exact(&mut modification_time)?;
-
-    let mut extra_flags = [0u8; 1];
-    reader.read_exact(&mut extra_flags)?;
-
-    let mut operating_system = [0u8; 1];
-    reader.read_exact(&mut operating_system)?;
-
-    let mut block_size = 0u16;
-
-    let extra_field_length = reader.read_u16::<byteorder::LittleEndian>()?;
-    debug!(logger, "\tExtra field length of {} bytes", extra_field_length);
-
-    let mut remaining_extra_field_length = extra_field_length;
-    while remaining_extra_field_length > 0 {
-        let mut subfield_identifier = [0u8; 2];
-        reader.read_exact(&mut subfield_identifier)?;
-
-        let subfield_length = reader.read_u16::<byteorder::LittleEndian>()?;
-        debug!(logger, "\t\tSubfield length of {} bytes", subfield_length);
-
-        if subfield_identifier == BGZF_IDENTIFIER {
-            debug!(logger, "\t\t\tSubfield is bgzf metadata");
-
-            if subfield_length != 2 {
-                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size is not a 16 bits number"));
+            let mut inflated_payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
+            inflated_payload_digest.write(&inflated_payload_bytes);
+            let inflated_payload_crc32 = inflated_payload_digest.sum32();
+            if inflated_payload_crc32 != block.inflated_payload_crc32 {
+                return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: incorrect payload CRC32 of block {}", block.id)));
             }
 
-            block_size = reader.read_u16::<byteorder::LittleEndian>()? + 1;
-            debug!(logger, "\t\t\t\tbgzf block size is {} bytes", block_size);
-        } else {
-            reader.seek(SeekFrom::Current(subfield_length as i64))?;
-        }
+            let inflated_payload_size = inflated_payload_bytes.len() as u32;
+            if inflated_payload_size != block.inflated_payload_size {
+                // TODO recoverable (wrong size is not a big issue if the CRC32 is correct)
+                return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: incorrect payload size of block {}", block.id)));
+            }
 
-        remaining_extra_field_length -= 4 + subfield_length;
-    }
-    if block_size == 0 {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size not found in gzip extra field"));
-    }
-
-    Ok(BGZFBlockInformation::Size((block_size - extra_field_length - 20u16) as u32))
-}
-
-fn check_block_payload(reader: &mut Rescuable, deflated_payload_size: u32, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
-    let mut deflated_bytes = vec![];
-    {
-        let mut deflate_reader = reader.take(deflated_payload_size as u64);
-        deflate_reader.read_to_end(&mut deflated_bytes)?;
-    }
-
-    let mut data_crc32 = [0u8; 4];
-    reader.read_exact(&mut data_crc32)?;
-
-    let data_size = reader.read_u32::<byteorder::LittleEndian>()?;
-    debug!(logger, "\tData size is {} bytes", data_size);
-
-    let inflated_bytes = match inflate::inflate_bytes(&deflated_bytes) {
-        Ok(inflated_bytes) => inflated_bytes,
-        Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload: {}", error))),
-    };
-
-    let mut payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
-    payload_digest.write(&inflated_bytes);
-    let payload_crc32 = payload_digest.sum32();
-
-    if data_crc32[0] != ((payload_crc32 & 0xff) as u8) ||
-       data_crc32[1] != (((payload_crc32 >> 8) & 0xff) as u8) ||
-       data_crc32[2] != (((payload_crc32 >> 16) & 0xff) as u8) ||
-       data_crc32[3] != (((payload_crc32 >> 24) & 0xff) as u8) {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload CRC32"));
-    }
-
-    let inflated_payload_size = inflated_bytes.len();
-
-    if data_size as usize != inflated_payload_size {
-        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: incorrect payload size"));
-    }
-
-    Ok(BGZFBlockInformation::Size(data_size))
-}
-
-fn check_block(reader: &mut Rescuable, logger: &slog::Logger) -> Result<BGZFBlockInformation, Error> {
-    let deflated_payload_size = match check_block_header(reader, &logger)? {
-        BGZFBlockInformation::EOF => return Ok(BGZFBlockInformation::EOF),
-        BGZFBlockInformation::Size(deflated_payload_size) => deflated_payload_size,
-    };
-
-    let payload_position = reader.seek(SeekFrom::Current(0i64))?;
-
-    match check_block_payload(reader, deflated_payload_size, &logger) {
-        Ok(bgzf_information) => Ok(bgzf_information),
-        Err(error) => {
-            reader.seek(SeekFrom::Start(payload_position + deflated_payload_size as u64 + 8u64))?;
-            Err(error)
+            Ok(())
         }
     }
 }
@@ -168,44 +76,193 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
     let mut blocks_size = 0u64;
     let mut bad_blocks_count = 0u64;
     let mut bad_blocks_size = 0u64;
-    let mut truncated = false;
-    let mut data_size = 0u32;
-    loop {
-        let block_offset = reader.seek(SeekFrom::Current(0))?;
-        debug!(logger, "Checking block {} at offset {}", blocks_count + 1, block_offset);
+    let mut truncated_in_block = false;
+    let mut truncated_between_blocks = false;
 
-        match check_block(reader, &logger) {
-            Ok(bgzf_size) => {
-                data_size = match bgzf_size {
-                    BGZFBlockInformation::EOF => {
-                        if data_size != 0u32 {
-                            truncated = true;
-                            if quiet {
-                                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty"));
-                            }
+    let mut previous_block: Option<BGZFBlock> = None;
+    loop {
+        let mut header_bytes = vec![];
+        {
+            let mut header_reader = reader.take(16);
+            match header_reader.read_to_end(&mut header_bytes) {
+                Ok(header_size) => {
+                    if header_size == 0 {
+                        break;
+                    }
+
+                    if header_size < 16 {
+                        if quiet {
+                            return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unexpected end of file while reading header of block {}", blocks_count)));
                         }
-                        break
-                    },
-                    BGZFBlockInformation::Size(data_size) => data_size,
-                };
-                blocks_size += data_size as u64;
-            },
+                        truncated_in_block = true;
+                        bad_blocks_count += 1;
+                        break;
+                    }
+                },
+                Err(error) => {
+                    if quiet {
+                        return Err(error);
+                    }
+                    truncated_in_block = true;
+                    bad_blocks_count += 1;
+                    break;
+                }
+            }
+        }
+
+        if header_bytes[0..2] != GZIP_IDENTIFIER {
+            // TODO recoverable if only a bitflip or two
+            if quiet {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip identitifer not found"));
+            }
+            // TODO seek right position, see below
+            panic!("Unexpected byte while checking header of block {}", blocks_count);
+        }
+
+        if header_bytes[2] != DEFLATE {
+            if quiet {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip compression method is not deflate"));
+            }
+            // TODO seek right position, see below
+            panic!("Unexpected byte while checking header of block {}", blocks_count);
+        }
+
+        if header_bytes[3] != FEXTRA {
+            if quiet {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected gzip flags"));
+            }
+            // TODO seek right position, see below
+            panic!("Unexpected byte while checking header of block {}", blocks_count);
+        }
+
+        // header_bytes[4..8] => modification time; can be anything
+        // header_bytes[8] => extra flags; can be anything
+        // header_bytes[9] => operating system; can be anything
+
+        let extra_field_size = 6u16;
+        if header_bytes[10..16] != [
+            0x06, 0x00, // extra field length (6 bytes)
+            0x42, 0x43, // bgzf identifier
+            0x02, 0x00  // extra subfield length (2 bytes)
+        ] {
+            if quiet {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size not found in gzip extra field"));
+            }
+            // TODO recoverable if only a bitflip or two
+            // TODO FIXME handle other extra subfields, skip until we get the right one and skip after too
+            // TODO FIXME don't forget to update extra_field_size
+            panic!("Unexpected byte while checking header of block {}", blocks_count);
+        }
+
+        // TODO if not at the right position for the next header, fix the previous header / payload or
+        // the current header, seek to the right position and “continue”l
+
+        match check_payload(&previous_block) {
+            Ok(_) => (),
             Err(error) => {
                 if quiet {
                     return Err(error);
                 }
                 bad_blocks_count += 1;
-                let current_offset = reader.seek(SeekFrom::Current(0))?;
-                blocks_size += current_offset - block_offset;
-                bad_blocks_size += current_offset - block_offset;
             }
         }
 
+        let block_size = match reader.read_u16::<byteorder::LittleEndian>() {
+            Ok(block_size) => block_size + 1,
+            Err(error) => {
+                if quiet {
+                    return Err(error);
+                }
+                truncated_in_block = true;
+                bad_blocks_count += 1;
+                break;
+            }
+        };
+
+        let mut deflated_payload_bytes = vec![];
+        {
+            let deflated_payload_size = block_size - 20u16 - extra_field_size;
+            let mut deflated_payload_reader = reader.take(deflated_payload_size as u64);
+            match deflated_payload_reader.read_to_end(&mut deflated_payload_bytes) {
+                Ok(deflated_payload_read_size) => {
+                    if deflated_payload_read_size < deflated_payload_size as usize {
+                        if quiet {
+                            return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unexpected end of file while reading payload of block {}", blocks_count)));
+                        }
+                        truncated_in_block = true;
+                        bad_blocks_count += 1;
+                        break;
+                    }
+                },
+                Err(error) => {
+                    if quiet {
+                        return Err(error);
+                    }
+                    truncated_in_block = true;
+                    bad_blocks_count += 1;
+                    break;
+                }
+            }
+        }
+
+        let inflated_payload_crc32 = match reader.read_u32::<byteorder::LittleEndian>() {
+            Ok(inflated_payload_crc32) => inflated_payload_crc32,
+            Err(error) => {
+                if quiet {
+                    return Err(error);
+                }
+                truncated_in_block = true;
+                bad_blocks_count += 1;
+                break;
+            }
+        };
+        let inflated_payload_size = match reader.read_u32::<byteorder::LittleEndian>() {
+            Ok(inflated_payload_size) => inflated_payload_size,
+            Err(error) => {
+                if quiet {
+                    return Err(error);
+                }
+                truncated_in_block = true;
+                bad_blocks_count += 1;
+                break;
+            }
+        };
+
+        previous_block = Some(BGZFBlock {
+            id: blocks_count,
+            header_bytes: header_bytes,
+            deflated_payload_bytes: deflated_payload_bytes,
+            inflated_payload_crc32: inflated_payload_crc32,
+            inflated_payload_size: inflated_payload_size,
+        });
 
         blocks_count += 1;
     }
 
+    match check_payload(&previous_block) {
+        Ok(_) => (),
+        Err(error) => {
+            if quiet {
+                return Err(error);
+            }
+            bad_blocks_count += 1;
+        }
+    }
+
+    match previous_block {
+        None => (),
+        Some(last_block) => {
+            if last_block.inflated_payload_size != 0 {
+                if quiet {
+                    return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty"));
+                }
+                truncated_between_blocks = true;
+            }
+        }
+    }
+
     if !quiet {
+        // TODO distinguish between repairable and unrepairable corruptions
         println!("bam file statistics:");
         match number_prefix::binary_prefix(blocks_size as f64) {
             number_prefix::Standalone(_) => println!("{: >7} bgzf {} found ({} {} of bam payload)", blocks_count, if blocks_count > 1 { "blocks" } else { "block" }, blocks_size, if blocks_size > 1 { "bytes" } else { "byte" }),
@@ -216,8 +273,11 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
             number_prefix::Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", bad_blocks_size, if bad_blocks_size > 1 { "bytes" } else { "byte" }, if blocks_size > 0 { (bad_blocks_size * 100) / blocks_size } else { 0 }),
             number_prefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, if blocks_size > 0 { (bad_blocks_size * 100) / blocks_size } else { 0 }),
         }
-        if truncated {
-            println!("        file truncated");
+        if truncated_in_block {
+            println!("        file truncated in a bgzf block");
+        }
+        if truncated_between_blocks {
+            println!("        file truncated between two bgzf block");
         }
     }
 
@@ -225,7 +285,11 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: corrupted bgzf blocks found"));
     }
 
-    if truncated {
+    if truncated_in_block {
+        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while checking a bgzf block"));
+    }
+
+    if truncated_between_blocks {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty"));
     }
 
