@@ -7,9 +7,11 @@ extern crate bamrescue;
 mod common;
 
 fn check(reader: &mut bamrescue::Rescuable) {
-    match bamrescue::check(reader, false, &common::null_logger()) {
-        Ok(()) => (),
-        Err(error) => panic!(error),
+    let results = bamrescue::check(reader, false, &common::null_logger());
+    if results.bad_blocks_count > 0 ||
+       results.truncated_in_block ||
+       results.truncated_between_blocks {
+        panic!("Invalid bam file");
     }
 }
 
