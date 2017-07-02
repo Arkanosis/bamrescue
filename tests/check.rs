@@ -24,6 +24,21 @@ fn empty_bam() {
 }
 
 #[test]
+fn empty_with_extra_subfields_before_bam() {
+    check(&mut common::empty_with_extra_subfields_before_bam())
+}
+
+#[test]
+fn empty_with_extra_subfields_after_bam() {
+    check(&mut common::empty_with_extra_subfields_after_bam())
+}
+
+#[test]
+fn empty_with_extra_subfields_before_and_after_bam() {
+    check(&mut common::empty_with_extra_subfields_before_and_after_bam())
+}
+
+#[test]
 fn single_block_bam() {
     check(&mut common::single_block_bam())
 }
@@ -81,12 +96,27 @@ fn three_blocks_bad_inflated_payload_size_bam() {
 
 #[test]
 #[should_panic]
-fn three_blocks_too_small_deflated_payload_size_bam() {
-    check(&mut common::three_blocks_too_small_deflated_payload_size_bam())
+fn three_blocks_too_small_bgzf_size_bam() {
+    check(&mut common::three_blocks_too_small_bgzf_size_bam())
 }
 
 #[test]
 #[should_panic]
-fn three_blocks_too_large_deflated_payload_size_bam() {
-    check(&mut common::three_blocks_too_large_deflated_payload_size_bam())
+fn three_blocks_too_large_bgzf_size_bam() {
+    check(&mut common::three_blocks_too_large_bgzf_size_bam())
+}
+
+#[test]
+fn three_blocks_with_extra_subfields_before_bam() {
+    check(&mut common::three_blocks_with_extra_subfields_before_bam())
+}
+
+#[test]
+fn three_blocks_with_extra_subfields_after_bam() {
+    check(&mut common::three_blocks_with_extra_subfields_after_bam())
+}
+
+#[test]
+fn three_blocks_with_extra_subfields_before_and_after_bam() {
+    check(&mut common::three_blocks_with_extra_subfields_before_and_after_bam())
 }

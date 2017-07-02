@@ -15,6 +15,7 @@ use std::io::{
     ErrorKind,
     Read,
     Seek,
+    SeekFrom,
     Write
 };
 
@@ -139,23 +140,137 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
         // header_bytes[8] => extra flags; can be anything
         // header_bytes[9] => operating system; can be anything
 
-        let extra_field_size = 6u16;
+        let mut bgzf_block_size = 0u16;
+
+        let mut extra_field_size = 6u16;
         if header_bytes[10..16] != [
             0x06, 0x00, // extra field length (6 bytes)
             0x42, 0x43, // bgzf identifier
             0x02, 0x00  // extra subfield length (2 bytes)
         ] {
-            if quiet {
-                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size not found in gzip extra field"));
-            }
             // TODO recoverable if only a bitflip or two
-            // TODO FIXME handle other extra subfields, skip until we get the right one and skip after too
-            // TODO FIXME don't forget to update extra_field_size
-            panic!("Unexpected byte while checking header of block {}", blocks_count);
+
+            extra_field_size = match (&mut &header_bytes[10..12]).read_u16::<byteorder::LittleEndian>() {
+                Ok(extra_field_size) => extra_field_size,
+                Err(error) => {
+                    if quiet {
+                        return Err(error);
+                    }
+                    bad_blocks_count += 1;
+                    break;
+                }
+            };
+
+            if header_bytes[12..16] == [
+                0x42, 0x43, // bgzf identifier
+                0x02, 0x00  // extra subfield length (2 bytes)
+            ] {
+                bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
+                    Ok(bgzf_block_size) => bgzf_block_size + 1,
+                    Err(error) => {
+                        if quiet {
+                            return Err(error);
+                        }
+                        truncated_in_block = true;
+                        bad_blocks_count += 1;
+                        break;
+                    }
+                };
+                match reader.seek(SeekFrom::Current((extra_field_size - 6u16) as i64)) {
+                    Ok(_) => (),
+                    Err(error) => {
+                        if quiet {
+                            return Err(error);
+                        }
+                        truncated_in_block = true;
+                        bad_blocks_count += 1;
+                        break;
+                    }
+                }
+                // TODO the bgzf extra subfield is the first, but check the other subfields nonetheless
+            } else {
+                let first_extra_subfield_size = match (&mut &header_bytes[14..16]).read_u16::<byteorder::LittleEndian>() {
+                    Ok(first_extra_subfield_size) => first_extra_subfield_size,
+                    Err(error) => {
+                        if quiet {
+                            return Err(error);
+                        }
+                        bad_blocks_count += 1;
+                        break;
+                    }
+                };
+
+                if first_extra_subfield_size > extra_field_size {
+                    if quiet {
+                        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip extra subfield larger than the whole extra field"));
+                    }
+                    bad_blocks_count += 1;
+                    break;
+                }
+
+                match reader.seek(SeekFrom::Current(first_extra_subfield_size as i64)) {
+                    Ok(_) => (),
+                    Err(error) => {
+                        if quiet {
+                            return Err(error);
+                        }
+                        truncated_in_block = true;
+                        bad_blocks_count += 1;
+                        break;
+                    }
+                }
+
+                let mut remaining_extra_field_size = extra_field_size - first_extra_subfield_size;
+                while remaining_extra_field_size > 4 {
+                    let mut extra_subfield_identifier = [0u8; 2];
+                    reader.read_exact(&mut extra_subfield_identifier)?;
+
+                    let extra_subfield_size = reader.read_u16::<byteorder::LittleEndian>()?;
+
+                    if extra_subfield_identifier == BGZF_IDENTIFIER {
+                        if extra_subfield_size != 2 {
+                            return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size is not a 16 bits number"));
+                        }
+                        bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
+                            Ok(bgzf_block_size) => bgzf_block_size + 1,
+                            Err(error) => {
+                                if quiet {
+                                    return Err(error);
+                                }
+                                truncated_in_block = true;
+                                bad_blocks_count += 1;
+                                break;
+                            }
+                        };
+                    } else {
+                        match reader.seek(SeekFrom::Current(extra_subfield_size as i64)) {
+                            Ok(_) => (),
+                            Err(error) => {
+                                if quiet {
+                                    return Err(error);
+                                }
+                                truncated_in_block = true;
+                                bad_blocks_count += 1;
+                                break;
+                            }
+                        }
+                    }
+
+                    remaining_extra_field_size -= 4 + extra_subfield_size;
+                }
+
+                if bgzf_block_size == 0u16 {
+                    if quiet {
+                        return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size not found in gzip extra field"));
+                    }
+                    bad_blocks_count += 1;
+                    break;
+                }
+            }
         }
 
         // TODO if not at the right position for the next header, fix the previous header / payload or
-        // the current header, seek to the right position and “continue”l
+        // the current header, seek to the right position and “continue”
 
         match check_payload(&previous_block) {
             Ok(_) => (),
@@ -167,21 +282,23 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
             }
         }
 
-        let block_size = match reader.read_u16::<byteorder::LittleEndian>() {
-            Ok(block_size) => block_size + 1,
-            Err(error) => {
-                if quiet {
-                    return Err(error);
+        if bgzf_block_size == 0 {
+            bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
+                Ok(bgzf_block_size) => bgzf_block_size + 1,
+                Err(error) => {
+                    if quiet {
+                        return Err(error);
+                    }
+                    truncated_in_block = true;
+                    bad_blocks_count += 1;
+                    break;
                 }
-                truncated_in_block = true;
-                bad_blocks_count += 1;
-                break;
-            }
-        };
+            };
+        }
 
         let mut deflated_payload_bytes = vec![];
         {
-            let deflated_payload_size = block_size - 20u16 - extra_field_size;
+            let deflated_payload_size = bgzf_block_size - 20u16 - extra_field_size;
             let mut deflated_payload_reader = reader.take(deflated_payload_size as u64);
             match deflated_payload_reader.read_to_end(&mut deflated_payload_bytes) {
                 Ok(deflated_payload_read_size) => {
