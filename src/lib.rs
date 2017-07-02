@@ -43,6 +43,15 @@ struct BGZFBlock {
     inflated_payload_size: u32,
 }
 
+struct Results {
+    blocks_count: u64,
+    blocks_size: u64,
+    bad_blocks_count: u64,
+    bad_blocks_size: u64,
+    truncated_in_block: bool,
+    truncated_between_blocks: bool,
+}
+
 fn check_payload(block: &Option<BGZFBlock>) -> Result<(), Error> {
     match *block {
         None => Ok(()),
@@ -73,12 +82,14 @@ fn check_payload(block: &Option<BGZFBlock>) -> Result<(), Error> {
 pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Result<(), Error> {
     info!(logger, "Checking integrity…");
 
-    let mut blocks_count = 0u64;
-    let mut blocks_size = 0u64;
-    let mut bad_blocks_count = 0u64;
-    let mut bad_blocks_size = 0u64;
-    let mut truncated_in_block = false;
-    let mut truncated_between_blocks = false;
+    let mut results = Results {
+        blocks_count: 0u64,
+        blocks_size: 0u64,
+        bad_blocks_count: 0u64,
+        bad_blocks_size: 0u64,
+        truncated_in_block: false,
+        truncated_between_blocks: false,
+    };
 
     let mut previous_block: Option<BGZFBlock> = None;
     loop {
@@ -93,10 +104,10 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
 
                     if header_size < 16 {
                         if quiet {
-                            return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unexpected end of file while reading header of block {}", blocks_count)));
+                            return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unexpected end of file while reading header of block {}", results.blocks_count)));
                         }
-                        truncated_in_block = true;
-                        bad_blocks_count += 1;
+                        results.truncated_in_block = true;
+                        results.bad_blocks_count += 1;
                         break;
                     }
                 },
@@ -104,8 +115,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                     if quiet {
                         return Err(error);
                     }
-                    truncated_in_block = true;
-                    bad_blocks_count += 1;
+                    results.truncated_in_block = true;
+                    results.bad_blocks_count += 1;
                     break;
                 }
             }
@@ -117,7 +128,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip identitifer not found"));
             }
             // TODO seek right position, see below
-            panic!("Unexpected byte while checking header of block {}", blocks_count);
+            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
         }
 
         if header_bytes[2] != DEFLATE {
@@ -125,7 +136,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip compression method is not deflate"));
             }
             // TODO seek right position, see below
-            panic!("Unexpected byte while checking header of block {}", blocks_count);
+            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
         }
 
         if header_bytes[3] != FEXTRA {
@@ -133,7 +144,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected gzip flags"));
             }
             // TODO seek right position, see below
-            panic!("Unexpected byte while checking header of block {}", blocks_count);
+            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
         }
 
         // header_bytes[4..8] => modification time; can be anything
@@ -156,7 +167,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                     if quiet {
                         return Err(error);
                     }
-                    bad_blocks_count += 1;
+                    results.bad_blocks_count += 1;
                     break;
                 }
             };
@@ -171,8 +182,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                         if quiet {
                             return Err(error);
                         }
-                        truncated_in_block = true;
-                        bad_blocks_count += 1;
+                        results.truncated_in_block = true;
+                        results.bad_blocks_count += 1;
                         break;
                     }
                 };
@@ -182,8 +193,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                         if quiet {
                             return Err(error);
                         }
-                        truncated_in_block = true;
-                        bad_blocks_count += 1;
+                        results.truncated_in_block = true;
+                        results.bad_blocks_count += 1;
                         break;
                     }
                 }
@@ -195,7 +206,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                         if quiet {
                             return Err(error);
                         }
-                        bad_blocks_count += 1;
+                        results.bad_blocks_count += 1;
                         break;
                     }
                 };
@@ -204,7 +215,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                     if quiet {
                         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: gzip extra subfield larger than the whole extra field"));
                     }
-                    bad_blocks_count += 1;
+                    results.bad_blocks_count += 1;
                     break;
                 }
 
@@ -214,8 +225,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                         if quiet {
                             return Err(error);
                         }
-                        truncated_in_block = true;
-                        bad_blocks_count += 1;
+                        results.truncated_in_block = true;
+                        results.bad_blocks_count += 1;
                         break;
                     }
                 }
@@ -229,7 +240,11 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
 
                     if extra_subfield_identifier == BGZF_IDENTIFIER {
                         if extra_subfield_size != 2 {
-                            return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size is not a 16 bits number"));
+                            if quiet {
+                                return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size is not a 16 bits number"));
+                            }
+                            results.bad_blocks_count += 1;
+                            break;
                         }
                         bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
                             Ok(bgzf_block_size) => bgzf_block_size + 1,
@@ -237,8 +252,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                                 if quiet {
                                     return Err(error);
                                 }
-                                truncated_in_block = true;
-                                bad_blocks_count += 1;
+                                results.truncated_in_block = true;
+                                results.bad_blocks_count += 1;
                                 break;
                             }
                         };
@@ -249,8 +264,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                                 if quiet {
                                     return Err(error);
                                 }
-                                truncated_in_block = true;
-                                bad_blocks_count += 1;
+                                results.truncated_in_block = true;
+                                results.bad_blocks_count += 1;
                                 break;
                             }
                         }
@@ -263,7 +278,7 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                     if quiet {
                         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: bgzf block size not found in gzip extra field"));
                     }
-                    bad_blocks_count += 1;
+                    results.bad_blocks_count += 1;
                     break;
                 }
             }
@@ -278,7 +293,11 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 if quiet {
                     return Err(error);
                 }
-                bad_blocks_count += 1;
+                results.bad_blocks_count += 1;
+                results.bad_blocks_size += match previous_block {
+                    None => 0,
+                    Some(ref previous_block) => previous_block.inflated_payload_size as u64,
+                };
             }
         }
 
@@ -289,8 +308,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                     if quiet {
                         return Err(error);
                     }
-                    truncated_in_block = true;
-                    bad_blocks_count += 1;
+                    results.truncated_in_block = true;
+                    results.bad_blocks_count += 1;
                     break;
                 }
             };
@@ -304,10 +323,10 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 Ok(deflated_payload_read_size) => {
                     if deflated_payload_read_size < deflated_payload_size as usize {
                         if quiet {
-                            return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unexpected end of file while reading payload of block {}", blocks_count)));
+                            return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unexpected end of file while reading payload of block {}", results.blocks_count)));
                         }
-                        truncated_in_block = true;
-                        bad_blocks_count += 1;
+                        results.truncated_in_block = true;
+                        results.bad_blocks_count += 1;
                         break;
                     }
                 },
@@ -315,8 +334,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                     if quiet {
                         return Err(error);
                     }
-                    truncated_in_block = true;
-                    bad_blocks_count += 1;
+                    results.truncated_in_block = true;
+                    results.bad_blocks_count += 1;
                     break;
                 }
             }
@@ -328,8 +347,8 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 if quiet {
                     return Err(error);
                 }
-                truncated_in_block = true;
-                bad_blocks_count += 1;
+                results.truncated_in_block = true;
+                results.bad_blocks_count += 1;
                 break;
             }
         };
@@ -339,21 +358,22 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
                 if quiet {
                     return Err(error);
                 }
-                truncated_in_block = true;
-                bad_blocks_count += 1;
+                results.truncated_in_block = true;
+                results.bad_blocks_count += 1;
                 break;
             }
         };
 
         previous_block = Some(BGZFBlock {
-            id: blocks_count,
+            id: results.blocks_count,
             header_bytes: header_bytes,
             deflated_payload_bytes: deflated_payload_bytes,
             inflated_payload_crc32: inflated_payload_crc32,
             inflated_payload_size: inflated_payload_size,
         });
 
-        blocks_count += 1;
+        results.blocks_count += 1;
+        results.blocks_size += inflated_payload_size as u64;
     }
 
     match check_payload(&previous_block) {
@@ -362,18 +382,22 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
             if quiet {
                 return Err(error);
             }
-            bad_blocks_count += 1;
+            results.bad_blocks_count += 1;
+            results.bad_blocks_size += match previous_block {
+                None => 0,
+                Some(ref previous_block) => previous_block.inflated_payload_size as u64,
+            };
         }
     }
 
     match previous_block {
         None => (),
-        Some(last_block) => {
+        Some(ref last_block) => {
             if last_block.inflated_payload_size != 0 {
                 if quiet {
                     return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty"));
                 }
-                truncated_between_blocks = true;
+                results.truncated_between_blocks = true;
             }
         }
     }
@@ -381,32 +405,32 @@ pub fn check(reader: &mut Rescuable, quiet: bool, logger: &slog::Logger) -> Resu
     if !quiet {
         // TODO distinguish between repairable and unrepairable corruptions
         println!("bam file statistics:");
-        match number_prefix::binary_prefix(blocks_size as f64) {
-            number_prefix::Standalone(_) => println!("{: >7} bgzf {} found ({} {} of bam payload)", blocks_count, if blocks_count > 1 { "blocks" } else { "block" }, blocks_size, if blocks_size > 1 { "bytes" } else { "byte" }),
-            number_prefix::Prefixed(prefix, number) => println!("{: >7} bgzf {} found ({:.0} {}B of bam payload)", blocks_count, if blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
+        match number_prefix::binary_prefix(results.blocks_size as f64) {
+            number_prefix::Standalone(_) => println!("{: >7} bgzf {} found ({} {} of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, results.blocks_size, if results.blocks_size > 1 { "bytes" } else { "byte" }),
+            number_prefix::Prefixed(prefix, number) => println!("{: >7} bgzf {} found ({:.0} {}B of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
         }
-        println!("{: >7} corrupted {} found ({:.2}% of total)", bad_blocks_count, if bad_blocks_count > 1 { "blocks" } else { "block" }, if blocks_count > 0 { (bad_blocks_count * 100) / blocks_count } else { 0 });
-        match number_prefix::binary_prefix(bad_blocks_size as f64) {
-            number_prefix::Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", bad_blocks_size, if bad_blocks_size > 1 { "bytes" } else { "byte" }, if blocks_size > 0 { (bad_blocks_size * 100) / blocks_size } else { 0 }),
-            number_prefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, if blocks_size > 0 { (bad_blocks_size * 100) / blocks_size } else { 0 }),
+        println!("{: >7} corrupted {} found ({:.2}% of total)", results.bad_blocks_count, if results.bad_blocks_count > 1 { "blocks" } else { "block" }, if results.blocks_count > 0 { (results.bad_blocks_count * 100) / results.blocks_count } else { 0 });
+        match number_prefix::binary_prefix(results.bad_blocks_size as f64) {
+            number_prefix::Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", results.bad_blocks_size, if results.bad_blocks_size > 1 { "bytes" } else { "byte" }, if results.blocks_size > 0 { (results.bad_blocks_size * 100) / results.blocks_size } else { 0 }),
+            number_prefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, if results.blocks_size > 0 { (results.bad_blocks_size * 100) / results.blocks_size } else { 0 }),
         }
-        if truncated_in_block {
+        if results.truncated_in_block {
             println!("        file truncated in a bgzf block");
         }
-        if truncated_between_blocks {
+        if results.truncated_between_blocks {
             println!("        file truncated between two bgzf block");
         }
     }
 
-    if bad_blocks_count > 0 {
+    if results.bad_blocks_count > 0 {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: corrupted bgzf blocks found"));
     }
 
-    if truncated_in_block {
+    if results.truncated_in_block {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while checking a bgzf block"));
     }
 
-    if truncated_between_blocks {
+    if results.truncated_between_blocks {
         return Err(Error::new(ErrorKind::InvalidData, "Invalid bam file: unexpected end of file while last bgzf block was not empty"));
     }
 
