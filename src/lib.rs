@@ -78,6 +78,18 @@ fn check_payload(block: &Option<BGZFBlock>) -> Result<(), Error> {
     }
 }
 
+macro_rules! fail {
+    ($fail_fast: expr, $results: expr, $truncated_in_block: expr) => {
+        $results.bad_blocks_count += 1;
+        if $truncated_in_block {
+            $results.truncated_in_block = true;
+        }
+        if $fail_fast {
+            return $results;
+        }
+    }
+}
+
 pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> Results {
     info!(logger, "Checking integrity…");
 
@@ -102,20 +114,12 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
                     }
 
                     if header_size < 16 {
-                        results.truncated_in_block = true;
-                        results.bad_blocks_count += 1;
-                        if fail_fast {
-                            return results;
-                        }
+                        fail!(fail_fast, results, true);
                         break;
                     }
                 },
-                Err(error) => {
-                    results.truncated_in_block = true;
-                    results.bad_blocks_count += 1;
-                    if fail_fast {
-                        return results;
-                    }
+                Err(_) => {
+                    fail!(fail_fast, results, true);
                     break;
                 }
             }
@@ -123,28 +127,19 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
 
         if header_bytes[0..2] != GZIP_IDENTIFIER {
             // TODO recoverable if only a bitflip or two
-            results.bad_blocks_count += 1;
-            if fail_fast {
-                return results;
-            }
+            fail!(fail_fast, results, false);
             // TODO seek right position, see below
             panic!("Unexpected byte while checking header of block {}", results.blocks_count);
         }
 
         if header_bytes[2] != DEFLATE {
-            results.bad_blocks_count += 1;
-            if fail_fast {
-                return results;
-            }
+            fail!(fail_fast, results, false);
             // TODO seek right position, see below
             panic!("Unexpected byte while checking header of block {}", results.blocks_count);
         }
 
         if header_bytes[3] != FEXTRA {
-            results.bad_blocks_count += 1;
-            if fail_fast {
-                return results;
-            }
+            fail!(fail_fast, results, false);
             // TODO seek right position, see below
             panic!("Unexpected byte while checking header of block {}", results.blocks_count);
         }
@@ -165,11 +160,8 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
 
             extra_field_size = match (&mut &header_bytes[10..12]).read_u16::<byteorder::LittleEndian>() {
                 Ok(extra_field_size) => extra_field_size,
-                Err(error) => {
-                    results.bad_blocks_count += 1;
-                    if fail_fast {
-                        return results;
-                    }
+                Err(_) => {
+                    fail!(fail_fast, results, false);
                     break;
                 }
             };
@@ -180,23 +172,15 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
             ] {
                 bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
                     Ok(bgzf_block_size) => bgzf_block_size + 1,
-                    Err(error) => {
-                        results.truncated_in_block = true;
-                        results.bad_blocks_count += 1;
-                        if fail_fast {
-                            return results;
-                        }
+                    Err(_) => {
+                        fail!(fail_fast, results, true);
                         break;
                     }
                 };
                 match reader.seek(SeekFrom::Current((extra_field_size - 6u16) as i64)) {
                     Ok(_) => (),
-                    Err(error) => {
-                        results.truncated_in_block = true;
-                        results.bad_blocks_count += 1;
-                        if fail_fast {
-                            return results;
-                        }
+                    Err(_) => {
+                        fail!(fail_fast, results, true);
                         break;
                     }
                 }
@@ -204,31 +188,21 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
             } else {
                 let first_extra_subfield_size = match (&mut &header_bytes[14..16]).read_u16::<byteorder::LittleEndian>() {
                     Ok(first_extra_subfield_size) => first_extra_subfield_size,
-                    Err(error) => {
-                        results.bad_blocks_count += 1;
-                        if fail_fast {
-                            return results;
-                        }
+                    Err(_) => {
+                        fail!(fail_fast, results, false);
                         break;
                     }
                 };
 
                 if first_extra_subfield_size > extra_field_size {
-                    results.bad_blocks_count += 1;
-                    if fail_fast {
-                        return results;
-                    }
+                    fail!(fail_fast, results, false);
                     break;
                 }
 
                 match reader.seek(SeekFrom::Current(first_extra_subfield_size as i64)) {
                     Ok(_) => (),
-                    Err(error) => {
-                        results.truncated_in_block = true;
-                        results.bad_blocks_count += 1;
-                        if fail_fast {
-                            return results;
-                        }
+                    Err(_) => {
+                        fail!(fail_fast, results, true);
                         break;
                     }
                 }
@@ -238,56 +212,37 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
                     let mut extra_subfield_identifier = [0u8; 2];
                     match reader.read_exact(&mut extra_subfield_identifier) {
                         Ok(_) => (),
-                        Err(error) => {
-                            results.truncated_in_block = true;
-                            results.bad_blocks_count += 1;
-                            if fail_fast {
-                                return results;
-                            }
+                        Err(_) => {
+                            fail!(fail_fast, results, true);
                             break;
                         }
                     }
 
                     let extra_subfield_size = match reader.read_u16::<byteorder::LittleEndian>() {
                         Ok(extra_subfield_size) => extra_subfield_size,
-                        Err(error) => {
-                            results.truncated_in_block = true;
-                            results.bad_blocks_count += 1;
-                            if fail_fast {
-                                return results;
-                            }
+                        Err(_) => {
+                            fail!(fail_fast, results, true);
                             break;
                         }
                     };
 
                     if extra_subfield_identifier == BGZF_IDENTIFIER {
                         if extra_subfield_size != 2 {
-                            results.bad_blocks_count += 1;
-                            if fail_fast {
-                                return results;
-                            }
+                            fail!(fail_fast, results, false);
                             break;
                         }
                         bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
                             Ok(bgzf_block_size) => bgzf_block_size + 1,
-                            Err(error) => {
-                                results.truncated_in_block = true;
-                                results.bad_blocks_count += 1;
-                                if fail_fast {
-                                    return results;
-                                }
+                            Err(_) => {
+                                fail!(fail_fast, results, true);
                                 break;
                             }
                         };
                     } else {
                         match reader.seek(SeekFrom::Current(extra_subfield_size as i64)) {
                             Ok(_) => (),
-                            Err(error) => {
-                                results.truncated_in_block = true;
-                                results.bad_blocks_count += 1;
-                                if fail_fast {
-                                    return results;
-                                }
+                            Err(_) => {
+                                fail!(fail_fast, results, true);
                                 break;
                             }
                         }
@@ -297,10 +252,7 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
                 }
 
                 if bgzf_block_size == 0u16 {
-                    results.bad_blocks_count += 1;
-                    if fail_fast {
-                        return results;
-                    }
+                    fail!(fail_fast, results, false);
                     break;
                 }
             }
@@ -311,27 +263,20 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
 
         match check_payload(&previous_block) {
             Ok(_) => (),
-            Err(error) => {
-                results.bad_blocks_count += 1;
+            Err(_) => {
                 results.bad_blocks_size += match previous_block {
                     None => 0,
                     Some(ref previous_block) => previous_block.inflated_payload_size as u64,
                 };
-                if fail_fast {
-                    return results;
-                }
+                fail!(fail_fast, results, false);
             }
         }
 
         if bgzf_block_size == 0 {
             bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
                 Ok(bgzf_block_size) => bgzf_block_size + 1,
-                Err(error) => {
-                    results.truncated_in_block = true;
-                    results.bad_blocks_count += 1;
-                    if fail_fast {
-                        return results;
-                    }
+                Err(_) => {
+                    fail!(fail_fast, results, true);
                     break;
                 }
             };
@@ -344,20 +289,12 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
             match deflated_payload_reader.read_to_end(&mut deflated_payload_bytes) {
                 Ok(deflated_payload_read_size) => {
                     if deflated_payload_read_size < deflated_payload_size as usize {
-                        results.truncated_in_block = true;
-                        results.bad_blocks_count += 1;
-                        if fail_fast {
-                            return results;
-                        }
+                        fail!(fail_fast, results, true);
                         break;
                     }
                 },
-                Err(error) => {
-                    results.truncated_in_block = true;
-                    results.bad_blocks_count += 1;
-                    if fail_fast {
-                        return results;
-                    }
+                Err(_) => {
+                    fail!(fail_fast, results, true);
                     break;
                 }
             }
@@ -365,23 +302,15 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
 
         let inflated_payload_crc32 = match reader.read_u32::<byteorder::LittleEndian>() {
             Ok(inflated_payload_crc32) => inflated_payload_crc32,
-            Err(error) => {
-                results.truncated_in_block = true;
-                results.bad_blocks_count += 1;
-                if fail_fast {
-                    return results;
-                }
+            Err(_) => {
+                fail!(fail_fast, results, true);
                 break;
             }
         };
         let inflated_payload_size = match reader.read_u32::<byteorder::LittleEndian>() {
             Ok(inflated_payload_size) => inflated_payload_size,
-            Err(error) => {
-                results.truncated_in_block = true;
-                results.bad_blocks_count += 1;
-                if fail_fast {
-                    return results;
-                }
+            Err(_) => {
+                fail!(fail_fast, results, true);
                 break;
             }
         };
@@ -400,15 +329,12 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
 
     match check_payload(&previous_block) {
         Ok(_) => (),
-        Err(error) => {
-            results.bad_blocks_count += 1;
+        Err(_) => {
             results.bad_blocks_size += match previous_block {
                 None => 0,
                 Some(ref previous_block) => previous_block.inflated_payload_size as u64,
             };
-            if fail_fast {
-                return results;
-            }
+            fail!(fail_fast, results, false);
         }
     }
 
