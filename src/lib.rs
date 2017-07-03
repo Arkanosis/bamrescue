@@ -106,14 +106,14 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
     loop {
         let mut header_bytes = vec![];
         {
-            let mut header_reader = reader.take(16);
+            let mut header_reader = reader.take(12);
             match header_reader.read_to_end(&mut header_bytes) {
                 Ok(header_size) => {
                     if header_size == 0 {
                         break;
                     }
 
-                    if header_size < 16 {
+                    if header_size < 12 {
                         fail!(fail_fast, results, true);
                         break;
                     }
@@ -148,28 +148,42 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         // header_bytes[8] => extra flags; can be anything
         // header_bytes[9] => operating system; can be anything
 
+        let extra_field_size = match (&mut &header_bytes[10..12]).read_u16::<byteorder::LittleEndian>() {
+            Ok(extra_field_size) => extra_field_size,
+            Err(_) => {
+                fail!(fail_fast, results, false);
+                break;
+            }
+        };
+
+        // TODO add the next extra_field_size bytes to header_bytes for rescue
+
         let mut bgzf_block_size = 0u16;
 
-        let mut extra_field_size = 6u16;
-        if header_bytes[10..16] != [
-            0x06, 0x00, // extra field length (6 bytes)
-            0x42, 0x43, // bgzf identifier
-            0x02, 0x00  // extra subfield length (2 bytes)
-        ] {
-            // TODO recoverable if only a bitflip or two
-
-            extra_field_size = match (&mut &header_bytes[10..12]).read_u16::<byteorder::LittleEndian>() {
-                Ok(extra_field_size) => extra_field_size,
+        let mut remaining_extra_field_size = extra_field_size;
+        while remaining_extra_field_size > 4 {
+            let mut extra_subfield_identifier = [0u8; 2];
+            match reader.read_exact(&mut extra_subfield_identifier) {
+                Ok(_) => (),
                 Err(_) => {
-                    fail!(fail_fast, results, false);
+                    fail!(fail_fast, results, true);
+                    break;
+                }
+            }
+
+            let extra_subfield_size = match reader.read_u16::<byteorder::LittleEndian>() {
+                Ok(extra_subfield_size) => extra_subfield_size,
+                Err(_) => {
+                    fail!(fail_fast, results, true);
                     break;
                 }
             };
 
-            if header_bytes[12..16] == [
-                0x42, 0x43, // bgzf identifier
-                0x02, 0x00  // extra subfield length (2 bytes)
-            ] {
+            if extra_subfield_identifier == BGZF_IDENTIFIER {
+                if extra_subfield_size != 2 {
+                    fail!(fail_fast, results, false);
+                    break;
+                }
                 bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
                     Ok(bgzf_block_size) => bgzf_block_size + 1,
                     Err(_) => {
@@ -177,85 +191,22 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
                         break;
                     }
                 };
-                match reader.seek(SeekFrom::Current((extra_field_size - 6u16) as i64)) {
-                    Ok(_) => (),
-                    Err(_) => {
-                        fail!(fail_fast, results, true);
-                        break;
-                    }
-                }
-                // TODO the bgzf extra subfield is the first, but check the other subfields nonetheless
             } else {
-                let first_extra_subfield_size = match (&mut &header_bytes[14..16]).read_u16::<byteorder::LittleEndian>() {
-                    Ok(first_extra_subfield_size) => first_extra_subfield_size,
-                    Err(_) => {
-                        fail!(fail_fast, results, false);
-                        break;
-                    }
-                };
-
-                if first_extra_subfield_size > extra_field_size {
-                    fail!(fail_fast, results, false);
-                    break;
-                }
-
-                match reader.seek(SeekFrom::Current(first_extra_subfield_size as i64)) {
+                match reader.seek(SeekFrom::Current(extra_subfield_size as i64)) {
                     Ok(_) => (),
                     Err(_) => {
                         fail!(fail_fast, results, true);
                         break;
                     }
-                }
-
-                let mut remaining_extra_field_size = extra_field_size - first_extra_subfield_size;
-                while remaining_extra_field_size > 4 {
-                    let mut extra_subfield_identifier = [0u8; 2];
-                    match reader.read_exact(&mut extra_subfield_identifier) {
-                        Ok(_) => (),
-                        Err(_) => {
-                            fail!(fail_fast, results, true);
-                            break;
-                        }
-                    }
-
-                    let extra_subfield_size = match reader.read_u16::<byteorder::LittleEndian>() {
-                        Ok(extra_subfield_size) => extra_subfield_size,
-                        Err(_) => {
-                            fail!(fail_fast, results, true);
-                            break;
-                        }
-                    };
-
-                    if extra_subfield_identifier == BGZF_IDENTIFIER {
-                        if extra_subfield_size != 2 {
-                            fail!(fail_fast, results, false);
-                            break;
-                        }
-                        bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
-                            Ok(bgzf_block_size) => bgzf_block_size + 1,
-                            Err(_) => {
-                                fail!(fail_fast, results, true);
-                                break;
-                            }
-                        };
-                    } else {
-                        match reader.seek(SeekFrom::Current(extra_subfield_size as i64)) {
-                            Ok(_) => (),
-                            Err(_) => {
-                                fail!(fail_fast, results, true);
-                                break;
-                            }
-                        }
-                    }
-
-                    remaining_extra_field_size -= 4 + extra_subfield_size;
-                }
-
-                if bgzf_block_size == 0u16 {
-                    fail!(fail_fast, results, false);
-                    break;
                 }
             }
+
+            remaining_extra_field_size -= 4 + extra_subfield_size;
+        }
+
+        if bgzf_block_size == 0u16 {
+            fail!(fail_fast, results, false);
+            break;
         }
 
         // TODO if not at the right position for the next header, fix the previous header / payload or
