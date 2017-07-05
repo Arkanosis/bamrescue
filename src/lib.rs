@@ -1,5 +1,7 @@
 extern crate byteorder;
 extern crate crc;
+extern crate futures;
+extern crate futures_cpupool;
 extern crate inflate;
 #[macro_use]
 extern crate slog;
@@ -7,6 +9,8 @@ extern crate slog;
 use byteorder::ReadBytesExt;
 
 use crc::crc32::Hasher32;
+
+use futures::Future;
 
 use std::io::{
     BufRead,
@@ -42,6 +46,11 @@ struct BGZFBlock {
     inflated_payload_size: u32,
 }
 
+struct BGZFBlockStatus {
+    corrupted: bool,
+    inflated_payload_size: u32,
+}
+
 pub struct Results {
     pub blocks_count: u64,
     pub blocks_size: u64,
@@ -51,29 +60,44 @@ pub struct Results {
     pub truncated_between_blocks: bool,
 }
 
-fn check_payload(block: &Option<BGZFBlock>) -> Result<(), Error> {
+fn check_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
     match *block {
-        None => Ok(()),
+        None => Ok(BGZFBlockStatus {
+            corrupted: false,
+            inflated_payload_size: 0,
+        }),
         Some(ref block) => {
             let inflated_payload_bytes = match inflate::inflate_bytes(&block.deflated_payload_bytes) {
                 Ok(inflated_payload_bytes) => inflated_payload_bytes,
-                Err(error) => return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: unable to inflate payload of block {}: {}", block.id, error))),
+                Err(error) => return Ok(BGZFBlockStatus {
+                    corrupted: true,
+                    inflated_payload_size: block.inflated_payload_size,
+                }),
             };
 
             let mut inflated_payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
             inflated_payload_digest.write(&inflated_payload_bytes);
             let inflated_payload_crc32 = inflated_payload_digest.sum32();
             if inflated_payload_crc32 != block.inflated_payload_crc32 {
-                return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: incorrect payload CRC32 of block {}", block.id)));
+                return Ok(BGZFBlockStatus {
+                    corrupted: true,
+                    inflated_payload_size: block.inflated_payload_size,
+                });
             }
 
             let inflated_payload_size = inflated_payload_bytes.len() as u32;
             if inflated_payload_size != block.inflated_payload_size {
                 // TODO recoverable (wrong size is not a big issue if the CRC32 is correct)
-                return Err(Error::new(ErrorKind::InvalidData, format!("Invalid bam file: incorrect payload size of block {}", block.id)));
+                return Ok(BGZFBlockStatus {
+                    corrupted: true,
+                    inflated_payload_size: block.inflated_payload_size,
+                });
             }
 
-            Ok(())
+            Ok(BGZFBlockStatus {
+                corrupted: false,
+                inflated_payload_size: block.inflated_payload_size,
+            })
         }
     }
 }
@@ -101,6 +125,8 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         truncated_in_block: false,
         truncated_between_blocks: false,
     };
+
+    let pool = futures_cpupool::CpuPool::new_num_cpus();
 
     let mut previous_block: Option<BGZFBlock> = None;
     loop {
@@ -212,15 +238,15 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         // TODO if not at the right position for the next header, fix the previous header / payload or
         // the current header, seek to the right position and “continue”
 
-        match check_payload(&previous_block) {
-            Ok(_) => (),
-            Err(_) => {
-                results.bad_blocks_size += match previous_block {
-                    None => 0,
-                    Some(ref previous_block) => previous_block.inflated_payload_size as u64,
-                };
-                fail!(fail_fast, results, false);
-            }
+        let payload_status_future = pool.spawn_fn(move || {
+            check_payload(&previous_block)
+        });
+        previous_block = None;
+
+        let payload_status = payload_status_future.wait().unwrap();
+        if payload_status.corrupted {
+            results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+            fail!(fail_fast, results, false);
         }
 
         if bgzf_block_size == 0 {
@@ -278,26 +304,21 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         results.blocks_size += inflated_payload_size as u64;
     }
 
-    match check_payload(&previous_block) {
-        Ok(_) => (),
-        Err(_) => {
-            results.bad_blocks_size += match previous_block {
-                None => 0,
-                Some(ref previous_block) => previous_block.inflated_payload_size as u64,
-            };
-            fail!(fail_fast, results, false);
-        }
+    let payload_status_future = pool.spawn_fn(move || {
+        check_payload(&previous_block)
+    });
+    previous_block = None;
+
+    let payload_status = payload_status_future.wait().unwrap();
+    if payload_status.corrupted {
+        results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+        fail!(fail_fast, results, false);
     }
 
-    match previous_block {
-        None => (),
-        Some(ref last_block) => {
-            if last_block.inflated_payload_size != 0 {
-                results.truncated_between_blocks = true;
-                if fail_fast {
-                    return results;
-                }
-            }
+    if payload_status.inflated_payload_size != 0 {
+        results.truncated_between_blocks = true;
+        if fail_fast {
+            return results;
         }
     }
 
