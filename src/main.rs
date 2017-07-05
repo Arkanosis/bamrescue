@@ -16,23 +16,24 @@ use std::io::BufReader;
 use std::process;
 
 const USAGE: &str = "
-Usage: bamrescue check [--quiet] <bamfile>
+Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
        bamrescue rescue <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
 Commands:
-    check        Check BAM file for corruption.
-    rescue       Keep only non-corrupted blocks of BAM file.
+    check                Check BAM file for corruption.
+    rescue               Keep only non-corrupted blocks of BAM file.
 
 Arguments:
-    bamfile      BAM file to check or rescue.
-    output       Rescued BAM file.
+    bamfile              BAM file to check or rescue.
+    output               Rescued BAM file.
 
 Options:
-    -h, --help   Show this screen.
-    -q, --quiet  Do not output statistics, stop at first error.
-    --version    Show version.
+    -h, --help           Show this screen.
+    -q, --quiet          Do not output statistics, stop at first error.
+    --threads=<threads>  Number of threads to use, 0 for auto [default: 0].
+    --version            Show version.
 ";
 
 #[derive(RustcDecodable)]
@@ -42,6 +43,7 @@ struct Args {
     arg_bamfile: String,
     arg_output: String,
     flag_quiet: bool,
+    flag_threads: usize,
     flag_version: bool,
 }
 
@@ -70,7 +72,7 @@ fn main() {
             process::exit(1);
         });
         let mut reader = BufReader::new(&bamfile);
-        let results = bamrescue::check(&mut reader, args.flag_quiet, &logger);
+        let results = bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads, &logger);
         if !args.flag_quiet {
             // TODO distinguish between repairable and unrepairable corruptions
             println!("bam file statistics:");

@@ -12,10 +12,11 @@ use crc::crc32::Hasher32;
 
 use futures::Future;
 
+use std::collections::VecDeque;
+
 use std::io::{
     BufRead,
     Error,
-    ErrorKind,
     Read,
     Seek,
     SeekFrom,
@@ -23,6 +24,12 @@ use std::io::{
 };
 
 use std::str;
+
+// 100 blocks of 64 kiB, even accounting for a huge overhead,
+// is still less than 10 MiB, which is trivially manageable.
+// Additionally, there's no chance that 100 threads or more
+// give any speedup inflating blocks of at most 64 kiB.
+const MAX_FUTURES: usize = 100;
 
 const GZIP_IDENTIFIER: [u8; 2] = [0x1f, 0x8b];
 const BGZF_IDENTIFIER: [u8; 2] = [0x42, 0x43];
@@ -39,7 +46,6 @@ pub trait Rescuable: BufRead + Seek {}
 impl<T: BufRead + Seek> Rescuable for T {}
 
 struct BGZFBlock {
-    id: u64,
     header_bytes: Vec<u8>,
     deflated_payload_bytes: Vec<u8>,
     inflated_payload_crc32: u32,
@@ -69,7 +75,7 @@ fn check_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
         Some(ref block) => {
             let inflated_payload_bytes = match inflate::inflate_bytes(&block.deflated_payload_bytes) {
                 Ok(inflated_payload_bytes) => inflated_payload_bytes,
-                Err(error) => return Ok(BGZFBlockStatus {
+                Err(_) => return Ok(BGZFBlockStatus {
                     corrupted: true,
                     inflated_payload_size: block.inflated_payload_size,
                 }),
@@ -114,7 +120,7 @@ macro_rules! fail {
     }
 }
 
-pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> Results {
+pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
     info!(logger, "Checking integrity…");
 
     let mut results = Results {
@@ -126,10 +132,25 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         truncated_between_blocks: false,
     };
 
-    let pool = futures_cpupool::CpuPool::new_num_cpus();
+    let pool;
+    if threads == 0 {
+        pool = futures_cpupool::CpuPool::new_num_cpus();
+    } else {
+        pool = futures_cpupool::CpuPool::new(threads);
+    }
+
+    let mut payload_status_futures = VecDeque::<futures_cpupool::CpuFuture<BGZFBlockStatus, Error>>::with_capacity(MAX_FUTURES);
 
     let mut previous_block: Option<BGZFBlock> = None;
     loop {
+        if payload_status_futures.len() == MAX_FUTURES {
+            let payload_status = payload_status_futures.pop_front().unwrap().wait().unwrap();
+            if payload_status.corrupted {
+                results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+                fail!(fail_fast, results, false);
+            }
+        }
+
         let mut header_bytes = vec![];
         {
             let mut header_reader = reader.take(12);
@@ -238,15 +259,18 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         // TODO if not at the right position for the next header, fix the previous header / payload or
         // the current header, seek to the right position and “continue”
 
-        let payload_status_future = pool.spawn_fn(move || {
-            check_payload(&previous_block)
-        });
-        previous_block = None;
-
-        let payload_status = payload_status_future.wait().unwrap();
-        if payload_status.corrupted {
-            results.bad_blocks_size += payload_status.inflated_payload_size as u64;
-            fail!(fail_fast, results, false);
+        if threads == 1 {
+            let payload_status = check_payload(&previous_block).unwrap();
+            if payload_status.corrupted {
+                results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+                fail!(fail_fast, results, false);
+            }
+        } else {
+            let payload_status_future = pool.spawn_fn(move || {
+                check_payload(&previous_block)
+            });
+            payload_status_futures.push_back(payload_status_future);
+            previous_block = None;
         }
 
         if bgzf_block_size == 0 {
@@ -293,7 +317,6 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         };
 
         previous_block = Some(BGZFBlock {
-            id: results.blocks_count,
             header_bytes: header_bytes,
             deflated_payload_bytes: deflated_payload_bytes,
             inflated_payload_crc32: inflated_payload_crc32,
@@ -304,18 +327,29 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, logger: &slog::Logger) -> 
         results.blocks_size += inflated_payload_size as u64;
     }
 
-    let payload_status_future = pool.spawn_fn(move || {
-        check_payload(&previous_block)
-    });
-    previous_block = None;
-
-    let payload_status = payload_status_future.wait().unwrap();
-    if payload_status.corrupted {
-        results.bad_blocks_size += payload_status.inflated_payload_size as u64;
-        fail!(fail_fast, results, false);
+    let mut last_inflated_payload_size = 0u32;
+    if threads == 1 {
+        let payload_status = check_payload(&previous_block).unwrap();
+        if payload_status.corrupted {
+            results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+            fail!(fail_fast, results, false);
+        }
+        last_inflated_payload_size = payload_status.inflated_payload_size;
+    } else {
+        let payload_status_future = pool.spawn_fn(move || {
+            check_payload(&previous_block)
+        });
+        payload_status_futures.push_back(payload_status_future);
+        for payload_status_future in payload_status_futures.iter_mut() {
+            let payload_status = payload_status_future.wait().unwrap();
+            if payload_status.corrupted {
+                results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+                fail!(fail_fast, results, false);
+            }
+            last_inflated_payload_size = payload_status.inflated_payload_size;
+        }
     }
-
-    if payload_status.inflated_payload_size != 0 {
+    if last_inflated_payload_size != 0 {
         results.truncated_between_blocks = true;
         if fail_fast {
             return results;

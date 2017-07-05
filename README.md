@@ -93,23 +93,24 @@ Copy the `bamrescue` binary wherever you want.
 ## Usage
 
 ```console
-Usage: bamrescue check [--quiet] <bamfile>
+Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
        bamrescue rescue <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
 Commands:
-    check        Check BAM file for corruption.
-    rescue       Keep only non-corrupted blocks of BAM file.
+    check                Check BAM file for corruption.
+    rescue               Keep only non-corrupted blocks of BAM file.
 
 Arguments:
-    bamfile      BAM file to check or rescue.
-    output       rescueed BAM file.
+    bamfile              BAM file to check or rescue.
+    output               Rescued BAM file.
 
 Options:
-    -h, --help   Show this screen.
-	-q, --quiet  Do not output statistics, stop at first error.
-    --version    Show version.
+    -h, --help           Show this screen.
+    -q, --quiet          Do not output statistics, stop at first error.
+    --threads=<threads>  Number of threads to use, 0 for auto [default: 0].
+    --version            Show version.
 ```
 
 ## Contributing and reporting bugs
