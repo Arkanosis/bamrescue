@@ -73,6 +73,44 @@ errors and working on corrupted data (typical use of gzip to get garbage data
 from a corrupted bam file): it's working on (ridiculously) less, validated
 data.
 
+## Performance
+
+bamrescue is very fast. Actually, it is even faster than gzip while doing more.
+
+Here are some numbers for a [40 MiB, non-corrupted bam file](http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeUwRepliSeq/wgEncodeUwRepliSeqK562G1AlnRep1.bam):
+
+| Command | Time | Corruption detected |
+| :------ | ---: | ------------------: |
+| gzip -t  | 695 ms | No |
+| bamrescue check -q --threads=1 | 1181 ms | No |
+| bamrescue check -q --threads=2 | 661 ms | No |
+| bamrescue check -q --threads=4 | 338 ms | No |
+| bamrescue check --threads=1 | 1181 ms | No |
+| bamrescue check --threads=2 | 661 ms | No |
+| bamrescue check --threads=4 | 338 ms | No |
+
+![Chart](doc/images/benchmarks_nc_2017-07-04.png)
+
+Here are some numbers for the same 40 MiB bam file, with two single-byte
+corruptions (at ~7 MiB and ~18 MiB, respectively):
+
+| Command | Time | Corruption detected | Number of corrupted blocks reported | Amount of data rescuable¹ |
+| :------ | ---: | ------------------: | ----------------------------------: | ------------------------: |
+| gzip -t  | 93 ms | Yes | N/A | 21 Mio (18%) |
+| bamrescue check -q --threads=1 | 157 ms | Yes | N/A | 21 Mio (18%) |
+| bamrescue check -q --threads=2 | 91 ms | Yes | N/A | 21 Mio (18%) |
+| bamrescue check -q --threads=4 | 56 ms | Yes | N/A | 21 Mio (18%) |
+| bamrescue check --threads=1 | 1174 ms | Yes | 2 | 117 Mio (99.99%) |
+| bamrescue check --threads=2 | 659 ms | Yes | 2 | 117 Mio (99.99%) |
+| bamrescue check --threads=4 | 338 ms | Yes | 2 | 117 Mio (99.99%) |
+
+¹ uncompressed bam payload, rescued using `gzip -d` or `bamrescue rescue`
+
+![Chart](doc/images/benchmarks_c_2017-07-04.png)
+
+Note: these benchmarks have been run on an Intel Core i5-6500 CPU running
+Kubuntu 16.04.2 and rustc 1.18.0.
+
 ## Caveats
 
 bamrescue does not check whether the bam payload of the file is actually
