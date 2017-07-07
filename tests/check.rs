@@ -24,6 +24,20 @@ fn check(reader: &mut bamrescue::Rescuable, blocks_count: u64, bad_blocks_count:
         assert_eq!(results.truncated_in_block, truncated_in_block);
         assert_eq!(results.truncated_between_blocks, truncated_between_blocks);
     }
+    reader.seek(SeekFrom::Start(0)).unwrap();
+    {
+        let results = bamrescue::check(reader, true, 1, &common::null_logger());
+        assert!(bad_blocks_count == 0 || results.bad_blocks_count > 0);
+        assert_eq!(results.truncated_in_block, truncated_in_block);
+        assert_eq!(results.truncated_between_blocks, truncated_between_blocks);
+    }
+    reader.seek(SeekFrom::Start(0)).unwrap();
+    {
+        let results = bamrescue::check(reader, true, 4, &common::null_logger());
+        assert!(bad_blocks_count == 0 || results.bad_blocks_count > 0);
+        assert_eq!(results.truncated_in_block, truncated_in_block);
+        assert_eq!(results.truncated_between_blocks, truncated_between_blocks);
+    }
 }
 
 #[test]
@@ -49,6 +63,21 @@ fn empty_with_extra_subfields_after_bam() {
 #[test]
 fn empty_with_extra_subfields_before_and_after_bam() {
     check(&mut common::empty_with_extra_subfields_before_and_after_bam(), 1, 0, false, false)
+}
+
+#[test]
+fn empty_with_extra_similar_subfields_before_bam() {
+    check(&mut common::empty_with_extra_similar_subfields_before_bam(), 1, 0, false, false)
+}
+
+#[test]
+fn empty_with_extra_similar_subfields_after_bam() {
+    check(&mut common::empty_with_extra_similar_subfields_after_bam(), 1, 0, false, false)
+}
+
+#[test]
+fn empty_with_extra_similar_subfields_before_and_after_bam() {
+    check(&mut common::empty_with_extra_similar_subfields_before_and_after_bam(), 1, 0, false, false)
 }
 
 #[test]
@@ -126,4 +155,19 @@ fn three_blocks_with_extra_subfields_after_bam() {
 #[test]
 fn three_blocks_with_extra_subfields_before_and_after_bam() {
     check(&mut common::three_blocks_with_extra_subfields_before_and_after_bam(), 4, 0, false, false)
+}
+
+#[test]
+fn three_blocks_with_extra_similar_subfields_before_bam() {
+    check(&mut common::three_blocks_with_extra_similar_subfields_before_bam(), 4, 0, false, false)
+}
+
+#[test]
+fn three_blocks_with_extra_similar_subfields_after_bam() {
+    check(&mut common::three_blocks_with_extra_similar_subfields_after_bam(), 4, 0, false, false)
+}
+
+#[test]
+fn three_blocks_with_extra_similar_subfields_before_and_after_bam() {
+    check(&mut common::three_blocks_with_extra_similar_subfields_before_and_after_bam(), 4, 0, false, false)
 }

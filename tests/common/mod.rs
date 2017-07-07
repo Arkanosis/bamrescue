@@ -62,7 +62,22 @@ fn gzip_extra_subfields() -> Vec<u8> {
     let extra_subfield = vec![
         0x42, 0x21,             // arbitrary unknown identifier
         0x07, 0x00,             // arbitrary extra subfield length (7 bytes)
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x7
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x7,
+    ];
+
+    let mut data = vec![];
+    data.extend(&extra_subfield);
+    data.extend(&extra_subfield);
+    data.extend(&extra_subfield);
+
+    data
+}
+
+fn gzip_extra_similar_subfields() -> Vec<u8> {
+    let extra_subfield = vec![
+        0x42, 0x21,             // similar unknown identifier
+        0x02, 0x00,             // same subfield length as bgzf (2 bytes)
+        0x01, 0x02,
     ];
 
     let mut data = vec![];
@@ -97,6 +112,24 @@ pub fn empty_bgzf_block_with_extra_subfields_before_and_after() -> Vec<u8> {
     ], 0, 0, 0, Some(gzip_extra_subfields()), Some(gzip_extra_subfields()))
 }
 
+pub fn empty_bgzf_block_with_extra_similar_subfields_before() -> Vec<u8> {
+    bgzf_block(vec![
+        0x03, 0x00 // deflated empty string
+    ], 0, 0, 0, Some(gzip_extra_similar_subfields()), None)
+}
+
+pub fn empty_bgzf_block_with_extra_similar_subfields_after() -> Vec<u8> {
+    bgzf_block(vec![
+        0x03, 0x00 // deflated empty string
+    ], 0, 0, 0, None, Some(gzip_extra_similar_subfields()))
+}
+
+pub fn empty_bgzf_block_with_extra_similar_subfields_before_and_after() -> Vec<u8> {
+    bgzf_block(vec![
+        0x03, 0x00 // deflated empty string
+    ], 0, 0, 0, Some(gzip_extra_similar_subfields()), Some(gzip_extra_similar_subfields()))
+}
+
 pub fn regular_bgzf_block() -> Vec<u8> {
     bgzf_block(vec![
         0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
@@ -119,6 +152,24 @@ pub fn regular_bgzf_block_with_extra_subfields_before_and_after() -> Vec<u8> {
     bgzf_block(vec![
         0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
     ], 5, 907060870, 0, Some(gzip_extra_subfields()), Some(gzip_extra_subfields()))
+}
+
+pub fn regular_bgzf_block_with_extra_similar_subfields_before() -> Vec<u8> {
+    bgzf_block(vec![
+        0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
+    ], 5, 907060870, 0, Some(gzip_extra_similar_subfields()), None)
+}
+
+pub fn regular_bgzf_block_with_extra_similar_subfields_after() -> Vec<u8> {
+    bgzf_block(vec![
+        0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
+    ], 5, 907060870, 0, None, Some(gzip_extra_similar_subfields()))
+}
+
+pub fn regular_bgzf_block_with_extra_similar_subfields_before_and_after() -> Vec<u8> {
+    bgzf_block(vec![
+        0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
+    ], 5, 907060870, 0, Some(gzip_extra_similar_subfields()), Some(gzip_extra_similar_subfields()))
 }
 
 pub fn bad_inflated_payload_crc32_bgzf_block() -> Vec<u8> {
@@ -167,6 +218,18 @@ pub fn empty_with_extra_subfields_after_bam() -> Cursor<Vec<u8>> {
 
 pub fn empty_with_extra_subfields_before_and_after_bam() -> Cursor<Vec<u8>> {
     Cursor::new(empty_bgzf_block_with_extra_subfields_before_and_after())
+}
+
+pub fn empty_with_extra_similar_subfields_before_bam() -> Cursor<Vec<u8>> {
+    Cursor::new(empty_bgzf_block_with_extra_similar_subfields_before())
+}
+
+pub fn empty_with_extra_similar_subfields_after_bam() -> Cursor<Vec<u8>> {
+    Cursor::new(empty_bgzf_block_with_extra_similar_subfields_after())
+}
+
+pub fn empty_with_extra_similar_subfields_before_and_after_bam() -> Cursor<Vec<u8>> {
+    Cursor::new(empty_bgzf_block_with_extra_similar_subfields_before_and_after())
 }
 
 pub fn single_block_bam() -> Cursor<Vec<u8>> {
@@ -273,6 +336,31 @@ pub fn three_blocks_with_extra_subfields_after_bam() -> Cursor<Vec<u8>> {
 pub fn three_blocks_with_extra_subfields_before_and_after_bam() -> Cursor<Vec<u8>> {
     let mut data = regular_bgzf_block();
     data.extend(&regular_bgzf_block_with_extra_subfields_before_and_after());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    Cursor::new(data)
+}
+
+
+pub fn three_blocks_with_extra_similar_subfields_before_bam() -> Cursor<Vec<u8>> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_similar_subfields_before());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    Cursor::new(data)
+}
+
+pub fn three_blocks_with_extra_similar_subfields_after_bam() -> Cursor<Vec<u8>> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_similar_subfields_after());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    Cursor::new(data)
+}
+
+pub fn three_blocks_with_extra_similar_subfields_before_and_after_bam() -> Cursor<Vec<u8>> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_similar_subfields_before_and_after());
     data.extend(&regular_bgzf_block());
     data.extend(&empty_bgzf_block());
     Cursor::new(data)

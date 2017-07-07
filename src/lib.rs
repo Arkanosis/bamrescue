@@ -241,6 +241,12 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
                 correct_bytes += 1;
             }
 
+            if extra_subfield_size > remaining_extra_field_size - 4 {
+                fail!(fail_fast, results, false);
+                // TODO FIXME check the next bytes, and if not correct, jump to the next block
+                panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+            }
+
             if correct_bytes == 4 ||
                (correct_bytes == 3 &&
                 extra_field_size == 6) {
