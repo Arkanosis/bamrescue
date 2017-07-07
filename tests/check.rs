@@ -72,13 +72,11 @@ fn three_blocks_empty_inside_bam() {
 }
 
 #[test]
-#[should_panic]
 fn single_block_missing_gzip_identifier() {
     check(&mut common::single_block_missing_gzip_identifier_bam(), 2, 1, false, false)
 }
 
 #[test]
-#[should_panic]
 fn single_block_missing_bgzf_identifier() {
     check(&mut common::single_block_missing_bgzf_identifier_bam(), 2, 1, false, false)
 }

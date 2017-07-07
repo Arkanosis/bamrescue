@@ -172,36 +172,37 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             }
         }
 
-        if header_bytes[0..2] != GZIP_IDENTIFIER {
-            // TODO recoverable if only a bitflip or two
-            fail!(fail_fast, results, false);
-            // TODO seek right position, see below
-            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+        let mut correct_bytes = 0;
+        if header_bytes[0] == GZIP_IDENTIFIER[0] {
+            correct_bytes += 1;
+        }
+        if header_bytes[1] == GZIP_IDENTIFIER[1] {
+            correct_bytes += 1;
+        }
+        if header_bytes[2] == DEFLATE {
+            correct_bytes += 1;
+        }
+        if header_bytes[3] == FEXTRA {
+            correct_bytes += 1;
         }
 
-        if header_bytes[2] != DEFLATE {
+        if correct_bytes < 4 {
             fail!(fail_fast, results, false);
-            // TODO seek right position, see below
-            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
-        }
-
-        if header_bytes[3] != FEXTRA {
-            fail!(fail_fast, results, false);
-            // TODO seek right position, see below
-            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+            if correct_bytes == 3 {
+                // single corrupted byte, can probably deal with it in place
+                // TODO fix the four bytes for rescue
+            } else {
+                // mutliple corrupted bytes, safer to jump to the next block
+                // TODO FIXME check the next bytes, and if not correct, jump to the next block
+                panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+            }
         }
 
         // header_bytes[4..8] => modification time; can be anything
         // header_bytes[8] => extra flags; can be anything
         // header_bytes[9] => operating system; can be anything
 
-        let extra_field_size = match (&mut &header_bytes[10..12]).read_u16::<byteorder::LittleEndian>() {
-            Ok(extra_field_size) => extra_field_size,
-            Err(_) => {
-                fail!(fail_fast, results, false);
-                break;
-            }
-        };
+        let extra_field_size = (&mut &header_bytes[10..12]).read_u16::<byteorder::LittleEndian>().unwrap();
 
         // TODO add the next extra_field_size bytes to header_bytes for rescue
 
@@ -226,10 +227,27 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
                 }
             };
 
-            if extra_subfield_identifier == BGZF_IDENTIFIER {
-                if extra_subfield_size != 2 {
+            let mut correct_bytes = 0;
+            if extra_subfield_identifier[0] == BGZF_IDENTIFIER[0] {
+                correct_bytes += 1;
+            }
+            if extra_subfield_identifier[1] == BGZF_IDENTIFIER[1] {
+                correct_bytes += 1;
+            }
+            if extra_subfield_size & 0xff == 2 {
+                correct_bytes += 1;
+            }
+            if extra_subfield_size & 0xff00 == 0 {
+                correct_bytes += 1;
+            }
+
+            if correct_bytes == 4 ||
+               (correct_bytes == 3 &&
+                extra_field_size == 6) {
+                if correct_bytes != 4 {
                     fail!(fail_fast, results, false);
-                    break;
+                    // single corrupted byte, but most likely at the right place anyway
+                    // TODO fix the four bytes for rescue
                 }
                 bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
                     Ok(bgzf_block_size) => bgzf_block_size + 1,
@@ -251,9 +269,16 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             remaining_extra_field_size -= 4 + extra_subfield_size;
         }
 
+        if remaining_extra_field_size != 0 {
+            fail!(fail_fast, results, false);
+            // TODO FIXME check the next bytes, and if not correct, jump to the next block
+            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+        }
+
         if bgzf_block_size == 0u16 {
             fail!(fail_fast, results, false);
-            break;
+            // TODO FIXME check the next bytes, and if not correct, jump to the next block
+            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
         }
 
         // TODO if not at the right position for the next header, fix the previous header / payload or
