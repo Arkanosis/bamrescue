@@ -304,16 +304,6 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             previous_block = None;
         }
 
-        if bgzf_block_size == 0 {
-            bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
-                Ok(bgzf_block_size) => bgzf_block_size + 1,
-                Err(_) => {
-                    fail!(fail_fast, results, true);
-                    break;
-                }
-            };
-        }
-
         let mut deflated_payload_bytes = vec![];
         {
             let deflated_payload_size = bgzf_block_size - 20u16 - extra_field_size;
