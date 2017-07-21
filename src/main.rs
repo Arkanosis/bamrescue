@@ -17,14 +17,17 @@ use std::process;
 
 const USAGE: &str = "
 Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
+       bamrescue rescue <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
 Commands:
     check                Check BAM file for corruption.
+    rescue               Keep only non-corrupted blocks of BAM file.
 
 Arguments:
     bamfile              BAM file to check or rescue.
+    output               Rescued BAM file.
 
 Options:
     -h, --help           Show this screen.
@@ -36,7 +39,9 @@ Options:
 #[derive(RustcDecodable)]
 struct Args {
     cmd_check: bool,
+    cmd_rescue: bool,
     arg_bamfile: String,
+    arg_output: String,
     flag_quiet: bool,
     flag_threads: usize,
     flag_version: bool,
@@ -92,5 +97,15 @@ fn main() {
            results.truncated_between_blocks {
             process::exit(1);
         }
+    } else if args.cmd_rescue {
+        File::open(&args.arg_bamfile).and_then(|bamfile| {
+            File::create(&args.arg_output).and_then(|mut output| {
+                let mut reader = BufReader::new(&bamfile);
+                bamrescue::rescue(&mut reader, &mut output, &logger)
+            })
+        }).unwrap_or_else(|cause| {
+            error!(logger, "Unable to rescue bam file: {}", cause);
+            process::exit(1);
+        });
     }
 }

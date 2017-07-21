@@ -51,6 +51,28 @@ Even though most tools would gave up on this file, it still contains almost
 100% of non-corrupted bam payload, and the user probably wouldn't mind much if
 they could work only on that close-to-100% amount of data.
 
+Let's rescue the non-corrupted payload (beware: this takes as much additional
+space on the disk as the original file):
+
+    $ bamrescue rescue samples/corrupted_payload.bam rescued_file.bam
+
+The output is the following:
+
+    Jun 17 23:06:48.840 INFO Rescuing data from samples/corrupted_payload.bam…
+    bam rescue statistics:
+       1870 bgzf blocks found (117 MiB of bam payload)
+          2 corrupted blocks removed (0% of total)
+         46 KiB of bam payload lost (0% of total)
+       1868 non-corrupted blocks rescued (almost 100% of total)
+        111 MiB of bam payload rescued (almost 100% of total)
+    Jun 17 23:07:10.555 ERRO INFO Data rescued to rescued_file.bam
+
+The resulting bam file can now be used like if it never had been corrupted.
+Rescued data is validated using a CRC32 checksum, so it's not like ignoring
+errors and working on corrupted data (typical use of gzip to get garbage data
+from a corrupted bam file): it's working on (ridiculously) less, validated
+data.
+
 ## Performance
 
 bamrescue is very fast. Actually, it is even faster than gzip while doing more.
@@ -110,14 +132,17 @@ Copy the `bamrescue` binary wherever you want.
 
 ```console
 Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
+       bamrescue rescue <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
 Commands:
     check                Check BAM file for corruption.
+    rescue               Keep only non-corrupted blocks of BAM file.
 
 Arguments:
     bamfile              BAM file to check or rescue.
+    output               Rescued BAM file.
 
 Options:
     -h, --help           Show this screen.
