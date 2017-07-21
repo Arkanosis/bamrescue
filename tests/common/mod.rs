@@ -193,7 +193,7 @@ pub fn too_small_bgzf_size_bgzf_block() -> Vec<u8> {
 pub fn too_large_bgzf_size_bgzf_block() -> Vec<u8> {
     bgzf_block(vec![
         0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
-    ], 25, 907060870, -5i32, None, None)
+    ], 25, 907060870, 5i32, None, None)
 }
 
 pub fn null_logger() -> Logger {

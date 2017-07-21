@@ -31,6 +31,8 @@ use std::str;
 // give any speedup inflating blocks of at most 64 kiB.
 const MAX_FUTURES: usize = 100;
 
+const BUFFER_SIZE: u64 = 65536;
+
 const GZIP_IDENTIFIER: [u8; 2] = [0x1f, 0x8b];
 const BGZF_IDENTIFIER: [u8; 2] = [0x42, 0x43];
 
@@ -50,6 +52,7 @@ struct BGZFBlock {
     deflated_payload_bytes: Vec<u8>,
     inflated_payload_crc32: u32,
     inflated_payload_size: u32,
+    corrupted: bool,
 }
 
 struct BGZFBlockStatus {
@@ -64,6 +67,49 @@ pub struct Results {
     pub bad_blocks_size: u64,
     pub truncated_in_block: bool,
     pub truncated_between_blocks: bool,
+}
+
+fn seek_next_block(reader: &mut Rescuable, block_position: u64) {
+    let mut current_position = block_position;
+    reader.seek(SeekFrom::Start(current_position)).unwrap();
+
+    let mut bytes = vec![];
+
+    'seek: loop {
+        let mut buffer_reader = reader.take(BUFFER_SIZE);
+        let buffer_size = buffer_reader.read_to_end(&mut bytes).unwrap();
+        for window in bytes.windows(4) {
+            let mut correct_bytes = 0;
+            if window[0] == GZIP_IDENTIFIER[0] {
+                correct_bytes += 1;
+            }
+            if window[1] == GZIP_IDENTIFIER[1] {
+                correct_bytes += 1;
+            }
+            if window[2] == DEFLATE {
+                correct_bytes += 1;
+            }
+            if window[3] == FEXTRA {
+                correct_bytes += 1;
+            }
+
+            if correct_bytes >= 3 {
+                break 'seek;
+            }
+            current_position += 1;
+        }
+        if buffer_size < BUFFER_SIZE as usize {
+            return;
+        }
+        {
+            let (beginning, end) = bytes.split_at_mut(4);
+            beginning.copy_from_slice(&end[end.len() - 4..]);
+        }
+        bytes.resize(4, 0);
+        current_position -= 4;
+    }
+
+    reader.seek(SeekFrom::Start(current_position)).unwrap();
 }
 
 fn check_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
@@ -101,7 +147,7 @@ fn check_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
             }
 
             Ok(BGZFBlockStatus {
-                corrupted: false,
+                corrupted: block.corrupted,
                 inflated_payload_size: block.inflated_payload_size,
             })
         }
@@ -109,12 +155,21 @@ fn check_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
 }
 
 macro_rules! fail {
-    ($fail_fast: expr, $results: expr, $truncated_in_block: expr) => {
-        $results.bad_blocks_count += 1;
+    ($fail_fast: expr, $results: expr, $previous_block: expr, $previous_block_corrupted: expr, $current_block_corrupted_ref: expr, $current_block_corrupted: expr, $truncated_in_block: expr) => {
+        match $previous_block {
+            None => {
+                $current_block_corrupted_ref |= $previous_block_corrupted;
+            },
+            Some(ref mut block) => {
+                block.corrupted |= $previous_block_corrupted;
+            }
+        }
+        $current_block_corrupted_ref |= $current_block_corrupted;
         if $truncated_in_block {
             $results.truncated_in_block = true;
         }
         if $fail_fast {
+            $results.bad_blocks_count += 1;
             return $results;
         }
     }
@@ -142,14 +197,22 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
     let mut payload_status_futures = VecDeque::<futures_cpupool::CpuFuture<BGZFBlockStatus, Error>>::with_capacity(MAX_FUTURES);
 
     let mut previous_block: Option<BGZFBlock> = None;
-    loop {
+    let mut previous_block_position;
+    let mut current_block_position = 0u64;
+    let mut current_block_corrupted = false;
+    'blocks: loop {
         if payload_status_futures.len() == MAX_FUTURES {
             let payload_status = payload_status_futures.pop_front().unwrap().wait().unwrap();
             if payload_status.corrupted {
+                results.bad_blocks_count += 1;
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
-                fail!(fail_fast, results, false);
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             }
         }
+
+        previous_block_position = current_block_position;
+        current_block_position = reader.seek(SeekFrom::Current(0i64)).unwrap();
+        current_block_corrupted = false;
 
         let mut header_bytes = vec![];
         {
@@ -157,17 +220,17 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             match header_reader.read_to_end(&mut header_bytes) {
                 Ok(header_size) => {
                     if header_size == 0 {
-                        break;
+                        break 'blocks;
                     }
 
                     if header_size < 12 {
-                        fail!(fail_fast, results, true);
-                        break;
+                        fail!(fail_fast, results, previous_block, true, current_block_corrupted, false, true);
+                        break 'blocks;
                     }
                 },
                 Err(_) => {
-                    fail!(fail_fast, results, true);
-                    break;
+                    fail!(fail_fast, results, previous_block, true, current_block_corrupted, false, true);
+                    break 'blocks;
                 }
             }
         }
@@ -187,14 +250,15 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
         }
 
         if correct_bytes < 4 {
-            fail!(fail_fast, results, false);
             if correct_bytes == 3 {
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, false);
                 // single corrupted byte, can probably deal with it in place
                 // TODO fix the four bytes for rescue
             } else {
-                // mutliple corrupted bytes, safer to jump to the next block
-                // TODO FIXME check the next bytes, and if not correct, jump to the next block
-                panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+                fail!(fail_fast, results, previous_block, true, current_block_corrupted, false, false);
+                // multiple corrupted bytes, safer to jump to the next block
+                seek_next_block(reader, previous_block_position + 1);
+                continue 'blocks;
             }
         }
 
@@ -214,16 +278,16 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             match reader.read_exact(&mut extra_subfield_identifier) {
                 Ok(_) => (),
                 Err(_) => {
-                    fail!(fail_fast, results, true);
-                    break;
+                    fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                    break 'blocks;
                 }
             }
 
             let extra_subfield_size = match reader.read_u16::<byteorder::LittleEndian>() {
                 Ok(extra_subfield_size) => extra_subfield_size,
                 Err(_) => {
-                    fail!(fail_fast, results, true);
-                    break;
+                    fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                    break 'blocks;
                 }
             };
 
@@ -242,32 +306,32 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             }
 
             if extra_subfield_size > remaining_extra_field_size - 4 {
-                fail!(fail_fast, results, false);
-                // TODO FIXME check the next bytes, and if not correct, jump to the next block
-                panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, false);
+                seek_next_block(reader, current_block_position + 1);
+                continue 'blocks;
             }
 
             if correct_bytes == 4 ||
                (correct_bytes == 3 &&
                 extra_field_size == 6) {
                 if correct_bytes != 4 {
-                    fail!(fail_fast, results, false);
+                    fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, false);
                     // single corrupted byte, but most likely at the right place anyway
                     // TODO fix the four bytes for rescue
                 }
                 bgzf_block_size = match reader.read_u16::<byteorder::LittleEndian>() {
                     Ok(bgzf_block_size) => bgzf_block_size + 1,
                     Err(_) => {
-                        fail!(fail_fast, results, true);
-                        break;
+                        fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                        break 'blocks;
                     }
                 };
             } else {
                 match reader.seek(SeekFrom::Current(extra_subfield_size as i64)) {
                     Ok(_) => (),
                     Err(_) => {
-                        fail!(fail_fast, results, true);
-                        break;
+                        fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                        break 'blocks;
                     }
                 }
             }
@@ -275,26 +339,24 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             remaining_extra_field_size -= 4 + extra_subfield_size;
         }
 
-        if remaining_extra_field_size != 0 {
-            fail!(fail_fast, results, false);
-            // TODO FIXME check the next bytes, and if not correct, jump to the next block
-            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+        if remaining_extra_field_size != 0u16 {
+            fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, false);
+            seek_next_block(reader, current_block_position + 1);
+            continue 'blocks;
         }
 
         if bgzf_block_size == 0u16 {
-            fail!(fail_fast, results, false);
-            // TODO FIXME check the next bytes, and if not correct, jump to the next block
-            panic!("Unexpected byte while checking header of block {}", results.blocks_count);
+            fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, false);
+            seek_next_block(reader, current_block_position + 1);
+            continue 'blocks;
         }
-
-        // TODO if not at the right position for the next header, fix the previous header / payload or
-        // the current header, seek to the right position and “continue”
 
         if threads == 1 {
             let payload_status = check_payload(&previous_block).unwrap();
             if payload_status.corrupted {
+                results.bad_blocks_count += 1;
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
-                fail!(fail_fast, results, false);
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             }
         } else {
             let payload_status_future = pool.spawn_fn(move || {
@@ -311,13 +373,13 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             match deflated_payload_reader.read_to_end(&mut deflated_payload_bytes) {
                 Ok(deflated_payload_read_size) => {
                     if deflated_payload_read_size < deflated_payload_size as usize {
-                        fail!(fail_fast, results, true);
-                        break;
+                        fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                        break 'blocks;
                     }
                 },
                 Err(_) => {
-                    fail!(fail_fast, results, true);
-                    break;
+                    fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                    break 'blocks;
                 }
             }
         }
@@ -325,15 +387,15 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
         let inflated_payload_crc32 = match reader.read_u32::<byteorder::LittleEndian>() {
             Ok(inflated_payload_crc32) => inflated_payload_crc32,
             Err(_) => {
-                fail!(fail_fast, results, true);
-                break;
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                break 'blocks;
             }
         };
         let inflated_payload_size = match reader.read_u32::<byteorder::LittleEndian>() {
             Ok(inflated_payload_size) => inflated_payload_size,
             Err(_) => {
-                fail!(fail_fast, results, true);
-                break;
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                break 'blocks;
             }
         };
 
@@ -342,6 +404,7 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             deflated_payload_bytes: deflated_payload_bytes,
             inflated_payload_crc32: inflated_payload_crc32,
             inflated_payload_size: inflated_payload_size,
+            corrupted: current_block_corrupted,
         });
 
         results.blocks_count += 1;
@@ -352,25 +415,28 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
     if threads == 1 {
         let payload_status = check_payload(&previous_block).unwrap();
         if payload_status.corrupted {
+            results.bad_blocks_count += 1;
             results.bad_blocks_size += payload_status.inflated_payload_size as u64;
-            fail!(fail_fast, results, false);
+            fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
         }
         last_inflated_payload_size = payload_status.inflated_payload_size;
     } else {
         let payload_status_future = pool.spawn_fn(move || {
             check_payload(&previous_block)
         });
+        previous_block = None;
         payload_status_futures.push_back(payload_status_future);
         for payload_status_future in payload_status_futures.iter_mut() {
             let payload_status = payload_status_future.wait().unwrap();
             if payload_status.corrupted {
+                results.bad_blocks_count += 1;
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
-                fail!(fail_fast, results, false);
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             }
             last_inflated_payload_size = payload_status.inflated_payload_size;
         }
     }
-    if last_inflated_payload_size != 0 {
+    if last_inflated_payload_size != 0u32 {
         results.truncated_between_blocks = true;
         if fail_fast {
             return results;

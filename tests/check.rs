@@ -130,14 +130,16 @@ fn three_blocks_bad_inflated_payload_size_bam() {
     check(&mut common::three_blocks_bad_inflated_payload_size_bam(), 4, 1, false, false)
 }
 
+// TODO same tests as the two following ones, but with blocks of len >> 65536,
+// including with a header over a block boundary to check that the loop works
+// properly
+
 #[test]
-#[should_panic]
 fn three_blocks_too_small_bgzf_size_bam() {
     check(&mut common::three_blocks_too_small_bgzf_size_bam(), 4, 1, false, false)
 }
 
 #[test]
-#[should_panic]
 fn three_blocks_too_large_bgzf_size_bam() {
     check(&mut common::three_blocks_too_large_bgzf_size_bam(), 4, 1, false, false)
 }
