@@ -112,7 +112,7 @@ fn seek_next_block(reader: &mut Rescuable, block_position: u64) {
     reader.seek(SeekFrom::Start(current_position)).unwrap();
 }
 
-fn check_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
+fn process_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
     match *block {
         None => Ok(BGZFBlockStatus {
             corrupted: false,
@@ -175,9 +175,7 @@ macro_rules! fail {
     }
 }
 
-pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
-    info!(logger, "Checking integrity…");
-
+fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
     let mut results = Results {
         blocks_count: 0u64,
         blocks_size: 0u64,
@@ -352,7 +350,7 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
         }
 
         if threads == 1 {
-            let payload_status = check_payload(&previous_block).unwrap();
+            let payload_status = process_payload(&previous_block).unwrap();
             if payload_status.corrupted {
                 results.bad_blocks_count += 1;
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
@@ -360,7 +358,7 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
             }
         } else {
             let payload_status_future = pool.spawn_fn(move || {
-                check_payload(&previous_block)
+                process_payload(&previous_block)
             });
             payload_status_futures.push_back(payload_status_future);
             previous_block = None;
@@ -413,7 +411,7 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
 
     let mut last_inflated_payload_size = 0u32;
     if threads == 1 {
-        let payload_status = check_payload(&previous_block).unwrap();
+        let payload_status = process_payload(&previous_block).unwrap();
         if payload_status.corrupted {
             results.bad_blocks_count += 1;
             results.bad_blocks_size += payload_status.inflated_payload_size as u64;
@@ -422,7 +420,7 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
         last_inflated_payload_size = payload_status.inflated_payload_size;
     } else {
         let payload_status_future = pool.spawn_fn(move || {
-            check_payload(&previous_block)
+            process_payload(&previous_block)
         });
         previous_block = None;
         payload_status_futures.push_back(payload_status_future);
@@ -446,9 +444,10 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
     results
 }
 
-pub fn rescue(reader: &mut Rescuable, writer: &mut Write, logger: &slog::Logger) -> Result<(), Error> {
-    info!(logger, "Rescuing file…");
+pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
+    process(reader, None, fail_fast, threads, logger)
+}
 
-    error!(logger, "bamrescue::rescue() is not yet implemented");
-    unimplemented!();
+pub fn rescue(reader: &mut Rescuable, writer: &mut Write, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
+    process(reader, Some(writer), fail_fast, threads, logger)
 }

@@ -48,6 +48,7 @@ struct Args {
 }
 
 fn main() {
+    // TODO FIXME remove loggers alltogether (?)
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog::LevelFilter(drain, slog::Level::Info).fuse();
@@ -66,13 +67,21 @@ fn main() {
 
     if args.flag_version {
         println!("bamrescue v{}", bamrescue::version());
-    } else if args.cmd_check {
+    } else if args.cmd_check || args.cmd_rescue {
         let bamfile = File::open(&args.arg_bamfile).unwrap_or_else(|cause| {
             println!("bamrescue: can't open file: {}: {}", &args.arg_bamfile, &cause);
             process::exit(1);
         });
         let mut reader = BufReader::new(&bamfile);
-        let results = bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads, &logger);
+        let results = if args.cmd_check {
+            bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads, &logger)
+        } else  {
+            let mut output = File::create(&args.arg_output).unwrap_or_else(|cause| {
+                println!("bamrescue: can't open file: {}: {}", &args.arg_output, &cause);
+                process::exit(1);
+            });
+            bamrescue::rescue(&mut reader, &mut output, args.flag_quiet, args.flag_threads, &logger)
+        };
         if !args.flag_quiet {
             // TODO distinguish between repairable and unrepairable corruptions
             println!("bam file statistics:");
@@ -97,15 +106,5 @@ fn main() {
            results.truncated_between_blocks {
             process::exit(1);
         }
-    } else if args.cmd_rescue {
-        File::open(&args.arg_bamfile).and_then(|bamfile| {
-            File::create(&args.arg_output).and_then(|mut output| {
-                let mut reader = BufReader::new(&bamfile);
-                bamrescue::rescue(&mut reader, &mut output, &logger)
-            })
-        }).unwrap_or_else(|cause| {
-            error!(logger, "Unable to rescue bam file: {}", cause);
-            process::exit(1);
-        });
     }
 }
