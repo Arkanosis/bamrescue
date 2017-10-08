@@ -80,7 +80,7 @@ fn main() {
                 println!("bamrescue: can't open file: {}: {}", &args.arg_output, &cause);
                 process::exit(1);
             });
-            bamrescue::rescue(&mut reader, &mut output, args.flag_quiet, args.flag_threads, &logger)
+            bamrescue::rescue(&mut reader, &mut output, args.flag_threads, &logger)
         };
         if !args.flag_quiet {
             // TODO distinguish between repairable and unrepairable corruptions

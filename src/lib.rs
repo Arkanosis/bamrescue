@@ -447,6 +447,6 @@ pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &s
     process(reader, None, fail_fast, threads, logger)
 }
 
-pub fn rescue(reader: &mut Rescuable, writer: &mut Write, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
-    process(reader, Some(writer), fail_fast, threads, logger)
+pub fn rescue(reader: &mut Rescuable, writer: &mut Write, threads: usize, logger: &slog::Logger) -> Results {
+    process(reader, Some(writer), false, threads, logger)
 }
