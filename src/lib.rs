@@ -3,7 +3,6 @@ extern crate crc;
 extern crate futures;
 extern crate futures_cpupool;
 extern crate inflate;
-#[macro_use]
 extern crate slog;
 
 use byteorder::ReadBytesExt;
