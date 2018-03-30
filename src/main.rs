@@ -9,11 +9,13 @@ extern crate slog_term;
 
 use slog::Drain;
 
-use std::fs::File;
+use std::{
+    fs::File,
 
-use std::io::BufReader;
+    io::BufReader,
 
-use std::process;
+    process,
+};
 
 const USAGE: &str = "
 Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>

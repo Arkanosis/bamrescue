@@ -19,7 +19,7 @@ use std::io::{
     Read,
     Seek,
     SeekFrom,
-    Write
+    Write,
 };
 
 use std::str;

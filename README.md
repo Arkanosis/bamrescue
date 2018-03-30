@@ -159,5 +159,5 @@ Please report bugs and feature requests on [GitHub issues](https://github.com/Ar
 
 ## License
 
-bamrescue is copyright (C) 2017 Jérémie Roquet <jroquet@arkanosis.net> and
+bamrescue is copyright (C) 2017-2018 Jérémie Roquet <jroquet@arkanosis.net> and
 licensed under the ISC license.
