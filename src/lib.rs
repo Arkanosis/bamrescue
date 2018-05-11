@@ -112,12 +112,12 @@ fn seek_next_block(reader: &mut Rescuable, block_position: u64) {
 }
 
 fn process_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
-    match *block {
+    match block {
         None => Ok(BGZFBlockStatus {
             corrupted: false,
             inflated_payload_size: 0,
         }),
-        Some(ref block) => {
+        Some(block) => {
             let inflated_payload_bytes = match inflate::inflate_bytes(&block.deflated_payload_bytes) {
                 Ok(inflated_payload_bytes) => inflated_payload_bytes,
                 Err(_) => return Ok(BGZFBlockStatus {
