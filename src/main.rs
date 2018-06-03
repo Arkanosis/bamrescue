@@ -13,7 +13,7 @@ use std::{
 
 const USAGE: &str = "
 Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
-       bamrescue rescue <bamfile> <output>
+       bamrescue rescue [--threads=<threads>] <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 

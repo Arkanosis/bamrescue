@@ -132,7 +132,7 @@ Copy the `bamrescue` binary wherever you want.
 
 ```console
 Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
-       bamrescue rescue <bamfile> <output>
+       bamrescue rescue [--threads=<threads>] <bamfile> <output>
        bamrescue -h | --help
        bamrescue --version
 
