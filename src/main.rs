@@ -2,12 +2,6 @@ extern crate bamrescue;
 extern crate docopt;
 extern crate number_prefix;
 extern crate rustc_serialize;
-#[macro_use]
-extern crate slog;
-extern crate slog_async;
-extern crate slog_term;
-
-use slog::Drain;
 
 use std::{
     fs::File,
@@ -50,13 +44,6 @@ struct Args {
 }
 
 fn main() {
-    // TODO FIXME remove loggers alltogether (?)
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog::LevelFilter(drain, slog::Level::Info).fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    let logger = slog::Logger::root(drain, o!());
-
     let args: Args =
         docopt::Docopt::new(USAGE)
             .and_then(|docopts|
@@ -76,13 +63,13 @@ fn main() {
         });
         let mut reader = BufReader::new(&bamfile);
         let results = if args.cmd_check {
-            bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads, &logger)
+            bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads)
         } else  {
             let mut output = File::create(&args.arg_output).unwrap_or_else(|cause| {
                 println!("bamrescue: can't open file: {}: {}", &args.arg_output, &cause);
                 process::exit(1);
             });
-            bamrescue::rescue(&mut reader, &mut output, args.flag_threads, &logger)
+            bamrescue::rescue(&mut reader, &mut output, args.flag_threads)
         };
         if !args.flag_quiet {
             // TODO distinguish between repairable and unrepairable corruptions

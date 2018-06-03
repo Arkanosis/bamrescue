@@ -3,7 +3,6 @@ extern crate crc;
 extern crate futures;
 extern crate futures_cpupool;
 extern crate inflate;
-extern crate slog;
 
 use byteorder::ReadBytesExt;
 
@@ -174,7 +173,7 @@ macro_rules! fail {
     }
 }
 
-fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
+fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, threads: usize) -> Results {
     let mut results = Results {
         blocks_count: 0u64,
         blocks_size: 0u64,
@@ -443,10 +442,10 @@ fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, 
     results
 }
 
-pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, logger: &slog::Logger) -> Results {
-    process(reader, None, fail_fast, threads, logger)
+pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize) -> Results {
+    process(reader, None, fail_fast, threads)
 }
 
-pub fn rescue(reader: &mut Rescuable, writer: &mut Write, threads: usize, logger: &slog::Logger) -> Results {
-    process(reader, Some(writer), false, threads, logger)
+pub fn rescue(reader: &mut Rescuable, writer: &mut Write, threads: usize) -> Results {
+    process(reader, Some(writer), false, threads)
 }

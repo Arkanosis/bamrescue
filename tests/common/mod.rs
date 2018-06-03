@@ -7,11 +7,6 @@ use std::io::{
     Cursor
 };
 
-use slog::{
-    Discard,
-    Logger
-};
-
 fn bgzf_block(deflated_payload: Vec<u8>, inflated_payload_size: u32, inflated_payload_crc32: u32, bgzf_size_delta: i32, extra_subfields_before_bgzf: Option<Vec<u8>>, extra_subfields_after_bgzf: Option<Vec<u8>>) -> Vec<u8> {
     let mut data = vec![
         0x1f, 0x8b,             // gzip identifier
@@ -194,10 +189,6 @@ pub fn too_large_bgzf_size_bgzf_block() -> Vec<u8> {
     bgzf_block(vec![
         0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 // deflated "hello"
     ], 25, 907060870, 5i32, None, None)
-}
-
-pub fn null_logger() -> Logger {
-    Logger::root(Discard, o!())
 }
 
 pub fn empty_file() -> Cursor<Vec<u8>> {
