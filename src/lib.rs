@@ -4,7 +4,10 @@ extern crate futures;
 extern crate futures_cpupool;
 extern crate inflate;
 
-use byteorder::ReadBytesExt;
+use byteorder:: {
+    ReadBytesExt,
+    WriteBytesExt,
+};
 
 use crc::crc32::Hasher32;
 
@@ -56,6 +59,7 @@ struct BGZFBlock {
 struct BGZFBlockStatus {
     corrupted: bool,
     inflated_payload_size: u32,
+    block: Option<BGZFBlock>,
 }
 
 pub struct Results {
@@ -110,11 +114,12 @@ fn seek_next_block(reader: &mut Rescuable, block_position: u64) {
     reader.seek(SeekFrom::Start(current_position)).unwrap();
 }
 
-fn process_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
+fn process_payload(block: Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
     match block {
         None => Ok(BGZFBlockStatus {
             corrupted: false,
             inflated_payload_size: 0,
+            block: None,
         }),
         Some(block) => {
             let inflated_payload_bytes = match inflate::inflate_bytes(&block.deflated_payload_bytes) {
@@ -122,6 +127,7 @@ fn process_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> 
                 Err(_) => return Ok(BGZFBlockStatus {
                     corrupted: true,
                     inflated_payload_size: block.inflated_payload_size,
+                    block: None,
                 }),
             };
 
@@ -132,6 +138,7 @@ fn process_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> 
                 return Ok(BGZFBlockStatus {
                     corrupted: true,
                     inflated_payload_size: block.inflated_payload_size,
+                    block: None,
                 });
             }
 
@@ -141,13 +148,30 @@ fn process_payload(block: &Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> 
                 return Ok(BGZFBlockStatus {
                     corrupted: true,
                     inflated_payload_size: block.inflated_payload_size,
+                    block: None,
                 });
             }
 
             Ok(BGZFBlockStatus {
                 corrupted: block.corrupted,
                 inflated_payload_size: block.inflated_payload_size,
+                block: if block.corrupted {
+                    None
+                } else {
+                    Some(block)
+                }
             })
+        }
+    }
+}
+
+fn write_block(writer: &mut Option<&mut Write>, block: Option<BGZFBlock>)  {
+    if let Some(ref mut writer) = writer {
+        if let Some(block) = block {
+            writer.write_all(&block.header_bytes).unwrap();
+            writer.write_all(&block.deflated_payload_bytes).unwrap();
+            writer.write_u32::<byteorder::LittleEndian>(block.inflated_payload_crc32).unwrap();
+            writer.write_u32::<byteorder::LittleEndian>(block.inflated_payload_size).unwrap();
         }
     }
 }
@@ -163,6 +187,7 @@ macro_rules! fail {
             }
         }
         $current_block_corrupted_ref |= $current_block_corrupted;
+        assert!($current_block_corrupted_ref || true); // TODO workaround the "unused assignment warning"
         if $truncated_in_block {
             $results.truncated_in_block = true;
         }
@@ -173,7 +198,7 @@ macro_rules! fail {
     }
 }
 
-fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, threads: usize) -> Results {
+fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bool, threads: usize) -> Results {
     let mut results = Results {
         blocks_count: 0u64,
         blocks_size: 0u64,
@@ -203,6 +228,8 @@ fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, 
                 results.bad_blocks_count += 1;
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
+            } else {
+                write_block(&mut writer, payload_status.block);
             }
         }
 
@@ -264,7 +291,27 @@ fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, 
 
         let extra_field_size = (&mut &header_bytes[10..12]).read_u16::<byteorder::LittleEndian>().unwrap();
 
-        // TODO add the next extra_field_size bytes to header_bytes for rescue
+        if writer.is_some() {
+            {
+                let mut extra_field_reader = reader.take(extra_field_size as u64);
+                match extra_field_reader.read_to_end(&mut header_bytes) {
+                    Ok(extra_field_actual_size) => {
+                        if extra_field_actual_size < extra_field_size as usize {
+                            fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                            break 'blocks;
+                        }
+                    },
+                    Err(_) => {
+                        fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                        break 'blocks;
+                    }
+                }
+            }
+
+            // TODO potential optimization:
+            // Read the extra subfields from header_bytes instead of from reader and don't seek back
+            reader.seek(SeekFrom::Current(-(extra_field_size as i64))).unwrap();
+        }
 
         let mut bgzf_block_size = 0u16;
 
@@ -348,15 +395,18 @@ fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, 
         }
 
         if threads == 1 {
-            let payload_status = process_payload(&previous_block).unwrap();
+            let payload_status = process_payload(previous_block).unwrap();
+            previous_block = None;
             if payload_status.corrupted {
                 results.bad_blocks_count += 1;
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
+            } else {
+                write_block(&mut writer, payload_status.block);
             }
         } else {
             let payload_status_future = pool.spawn_fn(move || {
-                process_payload(&previous_block)
+                process_payload(previous_block)
             });
             payload_status_futures.push_back(payload_status_future);
             previous_block = None;
@@ -409,16 +459,19 @@ fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, 
 
     let mut last_inflated_payload_size = 0u32;
     if threads == 1 {
-        let payload_status = process_payload(&previous_block).unwrap();
+        let payload_status = process_payload(previous_block).unwrap();
+        previous_block = None;
         if payload_status.corrupted {
             results.bad_blocks_count += 1;
             results.bad_blocks_size += payload_status.inflated_payload_size as u64;
             fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
+        } else {
+            write_block(&mut writer, payload_status.block);
         }
         last_inflated_payload_size = payload_status.inflated_payload_size;
     } else {
         let payload_status_future = pool.spawn_fn(move || {
-            process_payload(&previous_block)
+            process_payload(previous_block)
         });
         previous_block = None;
         payload_status_futures.push_back(payload_status_future);
@@ -428,12 +481,34 @@ fn process(reader: &mut Rescuable, writer: Option<&mut Write>, fail_fast: bool, 
                 results.bad_blocks_count += 1;
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
+            } else {
+                write_block(&mut writer, payload_status.block);
             }
             last_inflated_payload_size = payload_status.inflated_payload_size;
         }
     }
     if last_inflated_payload_size != 0u32 {
         results.truncated_between_blocks = true;
+        write_block(&mut writer, Some(BGZFBlock {
+            header_bytes: vec![
+                0x1f, 0x8b,             // gzip identifier
+                0x08,                   // method (deflate)
+                0x04,                   // flags (FEXTRA)
+                0x00, 0x00, 0x00, 0x00, // modification time
+                0x00,                   // extra flags
+                0xff,                   // operating system (unknown)
+                0x06, 0x00,             // extra field size (6 bytes)
+                0x42, 0x43,             // bgzf identifier
+                0x02, 0x00,             // extra subfield length (2 bytes)
+                0x1b, 0x00,             // bgzf block size, minus one (28 bytes - 1)
+            ],
+            deflated_payload_bytes: vec![
+                0x03, 0x00 // deflated empty string
+            ],
+            inflated_payload_crc32: 0,
+            inflated_payload_size: 0,
+            corrupted: false,
+        }));
         if fail_fast {
             return results;
         }

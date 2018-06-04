@@ -191,6 +191,137 @@ pub fn too_large_bgzf_size_bgzf_block() -> Vec<u8> {
     ], 25, 907060870, 5i32, None, None)
 }
 
+pub fn single_block() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn two_blocks() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_empty_inside() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&empty_bgzf_block());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn single_block_missing_gzip_identifier() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&empty_bgzf_block());
+    data[0] = 42;
+    data
+}
+
+pub fn single_block_missing_bgzf_identifier() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&empty_bgzf_block());
+    data[12] = 21;
+    data
+}
+
+pub fn two_blocks_missing_empty() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block());
+    data
+}
+
+pub fn three_blocks_bad_inflated_payload_crc32() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&bad_inflated_payload_crc32_bgzf_block());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_bad_inflated_payload_size() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&bad_inflated_payload_size_bgzf_block());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_too_small_bgzf_size() -> Vec<u8> {
+    let mut data = too_small_bgzf_size_bgzf_block();
+    data.extend(&regular_bgzf_block());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_too_large_bgzf_size() -> Vec<u8> {
+    let mut data = too_large_bgzf_size_bgzf_block();
+    data.extend(&regular_bgzf_block());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_with_extra_subfields_before() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_subfields_before());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_with_extra_subfields_after() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_subfields_after());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_with_extra_subfields_before_and_after() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_subfields_before_and_after());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+
+pub fn three_blocks_with_extra_similar_subfields_before() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_similar_subfields_before());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_with_extra_similar_subfields_after() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_similar_subfields_after());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+pub fn three_blocks_with_extra_similar_subfields_before_and_after() -> Vec<u8> {
+    let mut data = regular_bgzf_block();
+    data.extend(&regular_bgzf_block_with_extra_similar_subfields_before_and_after());
+    data.extend(&regular_bgzf_block());
+    data.extend(&empty_bgzf_block());
+    data
+}
+
+
 pub fn empty_file() -> Cursor<Vec<u8>> {
     Cursor::new(vec![])
 }
@@ -224,32 +355,19 @@ pub fn empty_with_extra_similar_subfields_before_and_after_bam() -> Cursor<Vec<u
 }
 
 pub fn single_block_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(single_block())
 }
 
 pub fn two_blocks_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(two_blocks())
 }
 
 pub fn three_blocks_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks())
 }
 
 pub fn three_blocks_empty_inside_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&empty_bgzf_block());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_empty_inside())
 }
 
 pub fn single_block_missing_empty_bam() -> Cursor<Vec<u8>> {
@@ -257,102 +375,53 @@ pub fn single_block_missing_empty_bam() -> Cursor<Vec<u8>> {
 }
 
 pub fn single_block_missing_gzip_identifier_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&empty_bgzf_block());
-    data[0] = 42;
-    Cursor::new(data)
+    Cursor::new(single_block_missing_gzip_identifier())
 }
 
 pub fn single_block_missing_bgzf_identifier_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&empty_bgzf_block());
-    data[12] = 21;
-    Cursor::new(data)
+    Cursor::new(single_block_missing_bgzf_identifier())
 }
 
 pub fn two_blocks_missing_empty_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(two_blocks_missing_empty())
 }
 
 pub fn three_blocks_bad_inflated_payload_crc32_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&bad_inflated_payload_crc32_bgzf_block());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_bad_inflated_payload_crc32())
 }
 
 pub fn three_blocks_bad_inflated_payload_size_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&bad_inflated_payload_size_bgzf_block());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_bad_inflated_payload_size())
 }
 
 pub fn three_blocks_too_small_bgzf_size_bam() -> Cursor<Vec<u8>> {
-    let mut data = too_small_bgzf_size_bgzf_block();
-    data.extend(&regular_bgzf_block());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_too_small_bgzf_size())
 }
 
 pub fn three_blocks_too_large_bgzf_size_bam() -> Cursor<Vec<u8>> {
-    let mut data = too_large_bgzf_size_bgzf_block();
-    data.extend(&regular_bgzf_block());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_too_large_bgzf_size())
 }
 
 pub fn three_blocks_with_extra_subfields_before_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block_with_extra_subfields_before());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_with_extra_subfields_before())
 }
 
 pub fn three_blocks_with_extra_subfields_after_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block_with_extra_subfields_after());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_with_extra_subfields_after())
 }
 
 pub fn three_blocks_with_extra_subfields_before_and_after_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block_with_extra_subfields_before_and_after());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_with_extra_subfields_before_and_after())
 }
 
-
 pub fn three_blocks_with_extra_similar_subfields_before_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block_with_extra_similar_subfields_before());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_with_extra_similar_subfields_before())
 }
 
 pub fn three_blocks_with_extra_similar_subfields_after_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block_with_extra_similar_subfields_after());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_with_extra_similar_subfields_after())
 }
 
 pub fn three_blocks_with_extra_similar_subfields_before_and_after_bam() -> Cursor<Vec<u8>> {
-    let mut data = regular_bgzf_block();
-    data.extend(&regular_bgzf_block_with_extra_similar_subfields_before_and_after());
-    data.extend(&regular_bgzf_block());
-    data.extend(&empty_bgzf_block());
-    Cursor::new(data)
+    Cursor::new(three_blocks_with_extra_similar_subfields_before_and_after())
 }
