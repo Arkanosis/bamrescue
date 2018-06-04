@@ -1,7 +1,8 @@
 extern crate bamrescue;
 extern crate docopt;
 extern crate number_prefix;
-extern crate rustc_serialize;
+#[macro_use]
+extern crate serde_derive;
 
 use std::{
     fs::File,
@@ -32,7 +33,7 @@ Options:
     --version            Show version.
 ";
 
-#[derive(RustcDecodable)]
+#[derive(Deserialize)]
 struct Args {
     cmd_check: bool,
     cmd_rescue: bool,
@@ -48,7 +49,7 @@ fn main() {
         docopt::Docopt::new(USAGE)
             .and_then(|docopts|
                 docopts.argv(std::env::args().into_iter())
-                   .decode()
+                   .deserialize()
             )
             .unwrap_or_else(|error|
                 error.exit()
