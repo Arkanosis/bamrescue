@@ -48,12 +48,19 @@ pub fn version() -> &'static str {
 pub trait Rescuable: BufRead + Seek {}
 impl<T: BufRead + Seek> Rescuable for T {}
 
+pub trait ListenProgress {
+    fn on_new_target(&self, target: u64);
+    fn on_progress(&self, progress: u64);
+    fn on_finished(&self);
+}
+
 struct BGZFBlock {
     header_bytes: Vec<u8>,
     deflated_payload_bytes: Vec<u8>,
     inflated_payload_crc32: u32,
     inflated_payload_size: u32,
     corrupted: bool,
+    end_position: u64,
 }
 
 struct BGZFBlockStatus {
@@ -165,13 +172,21 @@ fn process_payload(block: Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
     }
 }
 
-fn write_block(writer: &mut Option<&mut Write>, block: Option<BGZFBlock>)  {
+fn write_block(writer: &mut Option<&mut Write>, block: &Option<BGZFBlock>)  {
     if let Some(ref mut writer) = writer {
         if let Some(block) = block {
             writer.write_all(&block.header_bytes).unwrap();
             writer.write_all(&block.deflated_payload_bytes).unwrap();
             writer.write_u32::<byteorder::LittleEndian>(block.inflated_payload_crc32).unwrap();
             writer.write_u32::<byteorder::LittleEndian>(block.inflated_payload_size).unwrap();
+        }
+    }
+}
+
+fn report_progress(progress_listener: &mut Option<&mut ListenProgress>, block: &Option<BGZFBlock>)  {
+    if let Some(ref mut progress_listener) = progress_listener {
+        if let Some(block) = block {
+            progress_listener.on_progress(block.end_position);
         }
     }
 }
@@ -198,7 +213,13 @@ macro_rules! fail {
     }
 }
 
-fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bool, threads: usize) -> Results {
+fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bool, threads: usize, progress_listener: &mut Option<&mut ListenProgress>) -> Results {
+    let reader_size = reader.seek(SeekFrom::End(0)).unwrap();
+    reader.seek(SeekFrom::Start(0)).unwrap();
+    if let Some(ref mut progress_listener) = progress_listener {
+        progress_listener.on_new_target(reader_size);
+    }
+
     let mut results = Results {
         blocks_count: 0u64,
         blocks_size: 0u64,
@@ -229,8 +250,9 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             } else {
-                write_block(&mut writer, payload_status.block);
+                write_block(&mut writer, &payload_status.block);
             }
+            report_progress(progress_listener, &payload_status.block);
         }
 
         previous_block_position = current_block_position;
@@ -402,8 +424,9 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             } else {
-                write_block(&mut writer, payload_status.block);
+                write_block(&mut writer, &payload_status.block);
             }
+            report_progress(progress_listener, &payload_status.block);
         } else {
             let payload_status_future = pool.spawn_fn(move || {
                 process_payload(previous_block)
@@ -451,6 +474,7 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
             inflated_payload_crc32: inflated_payload_crc32,
             inflated_payload_size: inflated_payload_size,
             corrupted: current_block_corrupted,
+            end_position: reader.seek(SeekFrom::Current(0i64)).unwrap(),
         });
 
         results.blocks_count += 1;
@@ -466,9 +490,10 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
             results.bad_blocks_size += payload_status.inflated_payload_size as u64;
             fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
         } else {
-            write_block(&mut writer, payload_status.block);
+            write_block(&mut writer, &payload_status.block);
         }
         last_inflated_payload_size = payload_status.inflated_payload_size;
+        report_progress(progress_listener, &payload_status.block);
     } else {
         let payload_status_future = pool.spawn_fn(move || {
             process_payload(previous_block)
@@ -482,14 +507,15 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
                 results.bad_blocks_size += payload_status.inflated_payload_size as u64;
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             } else {
-                write_block(&mut writer, payload_status.block);
+                write_block(&mut writer, &payload_status.block);
             }
             last_inflated_payload_size = payload_status.inflated_payload_size;
+            report_progress(progress_listener, &payload_status.block);
         }
     }
     if last_inflated_payload_size != 0u32 {
         results.truncated_between_blocks = true;
-        write_block(&mut writer, Some(BGZFBlock {
+        write_block(&mut writer, &Some(BGZFBlock {
             header_bytes: vec![
                 0x1f, 0x8b,             // gzip identifier
                 0x08,                   // method (deflate)
@@ -508,19 +534,24 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
             inflated_payload_crc32: 0,
             inflated_payload_size: 0,
             corrupted: false,
+            end_position: 0
         }));
         if fail_fast {
             return results;
         }
     }
 
+    if let Some(ref mut progress_listener) = progress_listener {
+        progress_listener.on_finished();
+    }
+
     results
 }
 
-pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize) -> Results {
-    process(reader, None, fail_fast, threads)
+pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, progress_listener: &mut Option<&mut ListenProgress>) -> Results {
+    process(reader, None, fail_fast, threads, progress_listener)
 }
 
-pub fn rescue(reader: &mut Rescuable, writer: &mut Write, threads: usize) -> Results {
-    process(reader, Some(writer), false, threads)
+pub fn rescue(reader: &mut Rescuable, writer: &mut Write, threads: usize, progress_listener: &mut Option<&mut ListenProgress>) -> Results {
+    process(reader, Some(writer), false, threads, progress_listener)
 }

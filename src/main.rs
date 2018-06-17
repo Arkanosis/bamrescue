@@ -44,6 +44,22 @@ struct Args {
     flag_version: bool,
 }
 
+struct ProgressListener {
+        // TODO FIXME
+}
+
+impl bamrescue::ListenProgress for ProgressListener {
+    fn on_new_target(&self, target: u64) {
+        // TODO FIXME
+    }
+    fn on_progress(&self, progress: u64) {
+        // TODO FIXME
+    }
+    fn on_finished(&self) {
+        // TODO FIXME
+    }
+}
+
 fn main() {
     let args: Args =
         docopt::Docopt::new(USAGE)
@@ -62,15 +78,18 @@ fn main() {
             println!("bamrescue: can't open file: {}: {}", &args.arg_bamfile, &cause);
             process::exit(1);
         });
+        let mut progress_listener = ProgressListener {
+            // TODO FIXME
+        };
         let mut reader = BufReader::new(&bamfile);
         let results = if args.cmd_check {
-            bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads)
+            bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads, &mut Some(&mut progress_listener))
         } else  {
             let mut output = File::create(&args.arg_output).unwrap_or_else(|cause| {
                 println!("bamrescue: can't open file: {}: {}", &args.arg_output, &cause);
                 process::exit(1);
             });
-            bamrescue::rescue(&mut reader, &mut output, args.flag_threads)
+            bamrescue::rescue(&mut reader, &mut output, args.flag_threads, &mut Some(&mut progress_listener))
         };
         if !args.flag_quiet {
             // TODO distinguish between repairable and unrepairable corruptions

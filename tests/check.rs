@@ -8,7 +8,7 @@ use std::io::SeekFrom;
 
 fn check(reader: &mut bamrescue::Rescuable, blocks_count: u64, bad_blocks_count: u64, truncated_in_block: bool, truncated_between_blocks: bool) {
     {
-        let results = bamrescue::check(reader, false, 1);
+        let results = bamrescue::check(reader, false, 1, &mut None);
         assert_eq!(results.blocks_count, blocks_count);
         assert_eq!(results.bad_blocks_count, bad_blocks_count);
         assert_eq!(results.truncated_in_block, truncated_in_block);
@@ -16,7 +16,7 @@ fn check(reader: &mut bamrescue::Rescuable, blocks_count: u64, bad_blocks_count:
     }
     reader.seek(SeekFrom::Start(0)).unwrap();
     {
-        let results = bamrescue::check(reader, false, 4);
+        let results = bamrescue::check(reader, false, 4, &mut None);
         assert_eq!(results.blocks_count, blocks_count);
         assert_eq!(results.bad_blocks_count, bad_blocks_count);
         assert_eq!(results.truncated_in_block, truncated_in_block);
@@ -24,14 +24,14 @@ fn check(reader: &mut bamrescue::Rescuable, blocks_count: u64, bad_blocks_count:
     }
     reader.seek(SeekFrom::Start(0)).unwrap();
     {
-        let results = bamrescue::check(reader, true, 1);
+        let results = bamrescue::check(reader, true, 1, &mut None);
         assert!(bad_blocks_count == 0 || results.bad_blocks_count > 0);
         assert_eq!(results.truncated_in_block, truncated_in_block);
         assert_eq!(results.truncated_between_blocks, truncated_between_blocks);
     }
     reader.seek(SeekFrom::Start(0)).unwrap();
     {
-        let results = bamrescue::check(reader, true, 4);
+        let results = bamrescue::check(reader, true, 4, &mut None);
         assert!(bad_blocks_count == 0 || results.bad_blocks_count > 0);
         assert_eq!(results.truncated_in_block, truncated_in_block);
         assert_eq!(results.truncated_between_blocks, truncated_between_blocks);
