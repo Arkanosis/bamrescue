@@ -21,6 +21,7 @@ crc = "1.8"
 docopt = "1.0"
 futures = "0.1"
 futures-cpupool = "0.1"
+indicatif = { git = "https://github.com/Arkanosis/indicatif", rev = "8cf131e01c2d580c5c519829106c5fe51dc92bb7" }
 inflate = "0.4"
 number_prefix = "0.2"
 serde = "1.0"

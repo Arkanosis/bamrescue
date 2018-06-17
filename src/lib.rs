@@ -49,9 +49,10 @@ pub trait Rescuable: BufRead + Seek {}
 impl<T: BufRead + Seek> Rescuable for T {}
 
 pub trait ListenProgress {
-    fn on_new_target(&self, target: u64);
-    fn on_progress(&self, progress: u64);
-    fn on_finished(&self);
+    fn on_new_target(&mut self, target: u64);
+    fn on_progress(&mut self, progress: u64);
+    fn on_bad_block(&mut self);
+    fn on_finished(&mut self);
 }
 
 struct BGZFBlock {
@@ -191,6 +192,14 @@ fn report_progress(progress_listener: &mut Option<&mut ListenProgress>, block: &
     }
 }
 
+fn report_bad_block(results: &mut Results, progress_listener: &mut Option<&mut ListenProgress>, payload_status: &BGZFBlockStatus)  {
+    results.bad_blocks_count += 1;
+    results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+    if let Some(ref mut progress_listener) = progress_listener {
+        progress_listener.on_bad_block();
+    }
+}
+
 macro_rules! fail {
     ($fail_fast: expr, $results: expr, $previous_block: expr, $previous_block_corrupted: expr, $current_block_corrupted_ref: expr, $current_block_corrupted: expr, $truncated_in_block: expr) => {
         match $previous_block {
@@ -246,8 +255,7 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
         if payload_status_futures.len() == MAX_FUTURES {
             let payload_status = payload_status_futures.pop_front().unwrap().wait().unwrap();
             if payload_status.corrupted {
-                results.bad_blocks_count += 1;
-                results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+                report_bad_block(&mut results, progress_listener, &payload_status);
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             } else {
                 write_block(&mut writer, &payload_status.block);
@@ -420,8 +428,7 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
             let payload_status = process_payload(previous_block).unwrap();
             previous_block = None;
             if payload_status.corrupted {
-                results.bad_blocks_count += 1;
-                results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+                report_bad_block(&mut results, progress_listener, &payload_status);
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             } else {
                 write_block(&mut writer, &payload_status.block);
@@ -486,8 +493,7 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
         let payload_status = process_payload(previous_block).unwrap();
         previous_block = None;
         if payload_status.corrupted {
-            results.bad_blocks_count += 1;
-            results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+            report_bad_block(&mut results, progress_listener, &payload_status);
             fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
         } else {
             write_block(&mut writer, &payload_status.block);
@@ -503,8 +509,7 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
         for payload_status_future in payload_status_futures.iter_mut() {
             let payload_status = payload_status_future.wait().unwrap();
             if payload_status.corrupted {
-                results.bad_blocks_count += 1;
-                results.bad_blocks_size += payload_status.inflated_payload_size as u64;
+                report_bad_block(&mut results, progress_listener, &payload_status);
                 fail!(fail_fast, results, previous_block, false, current_block_corrupted, false, false);
             } else {
                 write_block(&mut writer, &payload_status.block);

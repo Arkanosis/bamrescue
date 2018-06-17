@@ -1,8 +1,15 @@
 extern crate bamrescue;
 extern crate docopt;
+extern crate indicatif;
 extern crate number_prefix;
 #[macro_use]
 extern crate serde_derive;
+
+use indicatif::{
+    ProgressBar,
+    ProgressDrawTarget,
+    ProgressStyle,
+};
 
 use std::{
     fs::File,
@@ -45,18 +52,43 @@ struct Args {
 }
 
 struct ProgressListener {
-        // TODO FIXME
+    progress_bar: ProgressBar,
+    blocks_count: u64,
+    bad_blocks_count: u64,
+}
+
+impl ProgressListener {
+    fn new() -> ProgressListener {
+        ProgressListener {
+            progress_bar: ProgressBar::hidden(),
+            blocks_count: 0,
+            bad_blocks_count: 0,
+        }
+    }
+    fn update_message(&mut self) {
+        self.progress_bar.set_message(&format!("{: >7} bgzf {} checked so far, {} corrupted.", self.blocks_count, if self.blocks_count > 1 { "blocks" } else { "block" }, self.bad_blocks_count));
+    }
 }
 
 impl bamrescue::ListenProgress for ProgressListener {
-    fn on_new_target(&self, target: u64) {
-        // TODO FIXME
+    fn on_new_target(&mut self, target: u64) {
+        self.progress_bar.set_length(target);
+        self.progress_bar.set_style(ProgressStyle::default_bar()
+            .template("[{wide_bar}] {percent:>3}% ({binary_bytes}/{binary_total_bytes}) [ETA: {eta_precise}]\n{msg}"));
+        self.update_message();
+        self.progress_bar.set_draw_target(ProgressDrawTarget::stderr());
     }
-    fn on_progress(&self, progress: u64) {
-        // TODO FIXME
+    fn on_progress(&mut self, progress: u64) {
+        self.progress_bar.set_position(progress);
+        self.blocks_count += 1;
+        self.update_message();
     }
-    fn on_finished(&self) {
-        // TODO FIXME
+    fn on_bad_block(&mut self) {
+        self.bad_blocks_count += 1;
+        self.update_message();
+    }
+    fn on_finished(&mut self) {
+        self.progress_bar.finish_with_message("");
     }
 }
 
@@ -78,9 +110,7 @@ fn main() {
             println!("bamrescue: can't open file: {}: {}", &args.arg_bamfile, &cause);
             process::exit(1);
         });
-        let mut progress_listener = ProgressListener {
-            // TODO FIXME
-        };
+        let mut progress_listener = ProgressListener::new();
         let mut reader = BufReader::new(&bamfile);
         let results = if args.cmd_check {
             bamrescue::check(&mut reader, args.flag_quiet, args.flag_threads, &mut Some(&mut progress_listener))
@@ -95,8 +125,8 @@ fn main() {
             // TODO distinguish between repairable and unrepairable corruptions
             println!("bam file statistics:");
             match number_prefix::binary_prefix(results.blocks_size as f64) {
-                number_prefix::Standalone(_) => println!("{: >7} bgzf {} found ({} {} of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, results.blocks_size, if results.blocks_size > 1 { "bytes" } else { "byte" }),
-                number_prefix::Prefixed(prefix, number) => println!("{: >7} bgzf {} found ({:.0} {}B of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
+                number_prefix::Standalone(_) => println!("{: >7} bgzf {} checked ({} {} of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, results.blocks_size, if results.blocks_size > 1 { "bytes" } else { "byte" }),
+                number_prefix::Prefixed(prefix, number) => println!("{: >7} bgzf {} checked ({:.0} {}B of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
             }
             println!("{: >7} corrupted {} found ({:.2}% of total)", results.bad_blocks_count, if results.bad_blocks_count > 1 { "blocks" } else { "block" }, if results.blocks_count > 0 { (results.bad_blocks_count * 100) / results.blocks_count } else { 0 });
             match number_prefix::binary_prefix(results.bad_blocks_size as f64) {
