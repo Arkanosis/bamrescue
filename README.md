@@ -4,6 +4,8 @@
 Alignment / Map (BAM) files for corruption and rescue as much data
 as possible from them in the event they happen to be corrupted.
 
+[![asciicast](https://arkanosis.com/images/bamrescue.png)](https://asciinema.org/a/187594)
+
 ## How it works
 
 A BAM file is a BGZF file ([specification](https://samtools.github.io/hts-specs/SAMv1.pdf)),
@@ -36,12 +38,10 @@ Let's check the file using bamrescue:
 
 The output is the following:
 
-    Jun 17 23:06:48.840 INFO Checking integrity of samples/corrupted_payload.bam…
     bam file statistics:
-       1870 bgzf blocks found (117 MiB of bam payload)
+       1870 bgzf blocks checked (117 MiB of bam payload)
           2 corrupted blocks found (0% of total)
          46 KiB of bam payload lost (0% of total)
-    Jun 17 23:07:10.555 ERRO Invalid bam file: corrupted bgzf blocks found
 
 Indeed, a whole hard drive bad sector typically amounts for 512 bytes lost,
 which is much smaller than an average bgzf block (which can be up to 64 KiB
@@ -58,14 +58,12 @@ space on the disk as the original file):
 
 The output is the following:
 
-    Jun 17 23:06:48.840 INFO Rescuing data from samples/corrupted_payload.bam…
-    bam rescue statistics:
+    bam file statistics:
        1870 bgzf blocks found (117 MiB of bam payload)
           2 corrupted blocks removed (0% of total)
          46 KiB of bam payload lost (0% of total)
-       1868 non-corrupted blocks rescued (almost 100% of total)
-        111 MiB of bam payload rescued (almost 100% of total)
-    Jun 17 23:07:10.555 ERRO INFO Data rescued to rescued_file.bam
+       1868 non-corrupted blocks rescued (100% of total)
+        111 MiB of bam payload rescued (100% of total)
 
 The resulting bam file can now be used like if it never had been corrupted.
 Rescued data is validated using a CRC32 checksum, so it's not like ignoring
