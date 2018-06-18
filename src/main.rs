@@ -139,6 +139,15 @@ fn main() {
             if results.truncated_between_blocks {
                 println!("        file truncated between two bgzf block");
             }
+            if args.cmd_rescue {
+                let good_blocks_count = results.blocks_count - results.bad_blocks_count;
+                let good_blocks_size = results.blocks_size - results.bad_blocks_size;
+                println!("{: >7} non-corrupted {} rescued ({:.2}% of total)", good_blocks_count, if good_blocks_count > 1 { "blocks" } else { "block" }, if results.blocks_count > 0 { (good_blocks_count * 100) / results.blocks_count } else { 0 });
+                match number_prefix::binary_prefix(good_blocks_size as f64) {
+                    number_prefix::Standalone(_) => println!("{: >7} {} of bam payload rescued ({:.2}% of total)", good_blocks_size, if good_blocks_size > 1 { "bytes" } else { "byte" }, if results.blocks_size > 0 { (good_blocks_size * 100) / results.blocks_size } else { 0 }),
+                    number_prefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload rescued ({:.2}% of total)", number, prefix, if results.blocks_size > 0 { (good_blocks_size * 100) / results.blocks_size } else { 0 }),
+                }
+            }
         }
         if results.bad_blocks_count > 0 ||
            results.truncated_in_block ||
