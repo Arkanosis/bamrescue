@@ -1,6 +1,6 @@
 [package]
 name = "bamrescue"
-version = "0.2.0"
+version = "0.3.0-dev"
 description = "Utility to check Binary Sequence Alignment / Map (BAM) files for corruption and repair them"
 
 authors = ["Jérémie Roquet <jroquet@arkanosis.net>"]
