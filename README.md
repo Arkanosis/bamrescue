@@ -87,7 +87,7 @@ Here are some numbers for a [40 MiB, non-corrupted bam file](http://hgdownload.c
 | bamrescue check --threads=2 | 661 ms | No |
 | bamrescue check --threads=4 | 338 ms | No |
 
-![Chart](doc/images/benchmarks_nc_2017-07-04.png)
+![Chart](docs/images/benchmarks_nc_2017-07-04.png)
 
 Here are some numbers for the same 40 MiB bam file, with two single-byte
 corruptions (at ~7 MiB and ~18 MiB, respectively):
@@ -104,7 +104,7 @@ corruptions (at ~7 MiB and ~18 MiB, respectively):
 
 ¹ uncompressed bam payload, rescued using `gzip -d` or `bamrescue rescue`
 
-![Chart](doc/images/benchmarks_c_2017-07-04.png)
+![Chart](docs/images/benchmarks_c_2017-07-04.png)
 
 Note: these benchmarks have been run on an Intel Core i5-6500 CPU running
 Kubuntu 16.04.2 and rustc 1.18.0.
