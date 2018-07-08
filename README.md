@@ -1,10 +1,54 @@
-# bamrescue [![](https://img.shields.io/crates/v/bamrescue.svg)](https://crates.io/crates/bamrescue) [![License](http://img.shields.io/badge/license-ISC-blue.svg)](/LICENSE) [![Build status](https://travis-ci.org/Arkanosis/bamrescue.svg?branch=master)](https://travis-ci.org/Arkanosis/bamrescue)
+# bamrescue [![](https://img.shields.io/crates/v/bamrescue.svg)](https://crates.io/crates/bamrescue) [![deb](https://img.shields.io/badge/deb-v0.2.0-green.svg)](https://apt.arkanosis.net/pool/stable/b/bamrescue/bamrescue.deb) [![License](https://img.shields.io/badge/license-ISC-blue.svg)](/LICENSE) [![Build status](https://travis-ci.org/Arkanosis/bamrescue.svg?branch=master)](https://travis-ci.org/Arkanosis/bamrescue)
 
 **bamrescue** is a command line utility to check Binary Sequence
 Alignment / Map (BAM) files for corruption and rescue as much data
 as possible from them in the event they happen to be corrupted.
 
 [![asciicast](https://arkanosis.com/images/bamrescue.png)](https://asciinema.org/a/187594)
+
+## Installation
+
+### On Debian and derivatives (Ubuntu, Mint…)
+
+Pre-built packages are provided for Debian and derivatives. They are only tested with Debian 8 (Jessie), Debian 9 (Stretch), Ubuntu 16.04 LTS (Xenial) and Ubutun 18.04 LTS (Bionic).
+
+```console
+# Install prerequisites
+sudo apt install curl apt-transport-https
+
+# Add the author's PGP key:
+curl -s https://arkanosis.net/jroquet.pub.asc | sudo apt-key add -
+
+# Add the author's apt stable channel to your apt sources:
+echo "deb https://apt.arkanosis.net/ software stable" | sudo tee /etc/apt/sources.list.d/arkanosis.list
+
+# Update and install bamrescue:
+sudo apt update
+sudo apt install bamrescue
+```
+
+## Usage
+
+```console
+Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
+       bamrescue rescue [--threads=<threads>] <bamfile> <output>
+       bamrescue -h | --help
+       bamrescue --version
+
+Commands:
+    check                Check BAM file for corruption.
+    rescue               Keep only non-corrupted blocks of BAM file.
+
+Arguments:
+    bamfile              BAM file to check or rescue.
+    output               Rescued BAM file.
+
+Options:
+    -h, --help           Show this screen.
+    -q, --quiet          Do not output statistics, stop at first error.
+    --threads=<threads>  Number of threads to use, 0 for auto [default: 0].
+    --version            Show version.
+```
 
 ## How it works
 
@@ -118,36 +162,9 @@ and bgzf formats. This means that as long as the tool used to create a bam
 file was compliant with the specification, the output of bamrescue will be as
 well, but bamrescue itself will do nothing to validate that compliance.
 
-## Compilation
+## Compiling
 
 Run `cargo build --release` in your working copy.
-
-## Installation
-
-Copy the `bamrescue` binary wherever you want.
-
-## Usage
-
-```console
-Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
-       bamrescue rescue [--threads=<threads>] <bamfile> <output>
-       bamrescue -h | --help
-       bamrescue --version
-
-Commands:
-    check                Check BAM file for corruption.
-    rescue               Keep only non-corrupted blocks of BAM file.
-
-Arguments:
-    bamfile              BAM file to check or rescue.
-    output               Rescued BAM file.
-
-Options:
-    -h, --help           Show this screen.
-    -q, --quiet          Do not output statistics, stop at first error.
-    --threads=<threads>  Number of threads to use, 0 for auto [default: 0].
-    --version            Show version.
-```
 
 ## Contributing and reporting bugs
 
