@@ -10,26 +10,28 @@ as possible from them in the event they happen to be corrupted.
 
 ### On Debian and derivatives (Ubuntu, Mint…)
 
-Pre-built packages are provided for Debian and derivatives. They are only tested with Debian 8 (Jessie), Debian 9 (Stretch), Ubuntu 16.04 LTS (Xenial) and Ubutun 18.04 LTS (Bionic).
+Pre-built packages are provided for Debian and derivatives. They are only
+tested with Debian 8 (Jessie), Debian 9 (Stretch), Ubuntu 16.04 LTS (Xenial)
+and Ubuntu 18.04 LTS (Bionic).
 
-```console
+```bash
 # Install prerequisites
 sudo apt install curl apt-transport-https
 
-# Add the author's PGP key:
+# Add the author's PGP key
 curl -s https://arkanosis.net/jroquet.pub.asc | sudo apt-key add -
 
-# Add the author's apt stable channel to your apt sources:
+# Add the author's apt stable channel to your apt sources
 echo "deb https://apt.arkanosis.net/ software stable" | sudo tee /etc/apt/sources.list.d/arkanosis.list
 
-# Update and install bamrescue:
+# Update and install bamrescue
 sudo apt update
 sudo apt install bamrescue
 ```
 
 ## Usage
 
-```console
+```
 Usage: bamrescue check [--quiet] [--threads=<threads>] <bamfile>
        bamrescue rescue [--threads=<threads>] <bamfile> <output>
        bamrescue -h | --help
@@ -78,14 +80,13 @@ payload is considered lost depending on the tool.
 
 Let's check the file using bamrescue:
 
-    $ bamrescue check samples/corrupted_payload.bam
-
-The output is the following:
-
-    bam file statistics:
-       1870 bgzf blocks checked (117 MiB of bam payload)
-          2 corrupted blocks found (0% of total)
-         46 KiB of bam payload lost (0% of total)
+```shell
+$ bamrescue check samples/corrupted_payload.bam
+bam file statistics:
+   1870 bgzf blocks checked (117 MiB of bam payload)
+      2 corrupted blocks found (0% of total)
+     46 KiB of bam payload lost (0% of total)
+```
 
 Indeed, a whole hard drive bad sector typically amounts for 512 bytes lost,
 which is much smaller than an average bgzf block (which can be up to 64 KiB
@@ -98,16 +99,15 @@ they could work only on that close-to-100% amount of data.
 Let's rescue the non-corrupted payload (beware: this takes as much additional
 space on the disk as the original file):
 
-    $ bamrescue rescue samples/corrupted_payload.bam rescued_file.bam
-
-The output is the following:
-
-    bam file statistics:
-       1870 bgzf blocks found (117 MiB of bam payload)
-          2 corrupted blocks removed (0% of total)
-         46 KiB of bam payload lost (0% of total)
-       1868 non-corrupted blocks rescued (100% of total)
-        111 MiB of bam payload rescued (100% of total)
+```shell
+$ bamrescue rescue samples/corrupted_payload.bam rescued_file.bam
+bam file statistics:
+   1870 bgzf blocks found (117 MiB of bam payload)
+      2 corrupted blocks removed (0% of total)
+     46 KiB of bam payload lost (0% of total)
+   1868 non-corrupted blocks rescued (100% of total)
+    111 MiB of bam payload rescued (100% of total)
+```
 
 The resulting bam file can now be used like if it never had been corrupted.
 Rescued data is validated using a CRC32 checksum, so it's not like ignoring
