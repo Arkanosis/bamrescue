@@ -149,9 +149,10 @@ fn main() {
                 }
             }
         }
-        if results.bad_blocks_count > 0 ||
-           results.truncated_in_block ||
-           results.truncated_between_blocks {
+        if args.cmd_check &&
+           (results.bad_blocks_count > 0 ||
+            results.truncated_in_block ||
+            results.truncated_between_blocks) {
             process::exit(1);
         }
     }
