@@ -8,6 +8,30 @@ as possible from them in the event they happen to be corrupted.
 
 ## Installation
 
+### On ArchLinux and derivatives (Manjaro, Antergos…)
+
+A PKGBUILD is provided on AUR for ArchLinux and derivatives. It is only
+tested with an up-to-date ArchLinux.
+
+```bash
+# Get the PKGBUILD
+git clone https://aur.archlinux.org/bamrescue.git
+
+# Add the author's PGP key
+gpg2 --recv-keys FA490B15D054C7E83F70B0408C145ABAC11FA702
+
+# Build and install bamrescue
+cd bamrescue
+makepkg -si
+```
+
+Alternatively, you can install bamrescue using an AUR helper such as [yay](https://github.com/Jguer/yay):
+
+```bash
+# Install bamrescue
+yay -S bamrescue
+```
+
 ### On Debian and derivatives (Ubuntu, Mint…)
 
 Pre-built packages are provided for Debian and derivatives. They are only
