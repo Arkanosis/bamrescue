@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: ISC
+
+# bamrescue(1) completion for Bash                          -*- shell-script -*-
+#
+# This file is part of bamrescue.
+#
+# Copyright (C) 2017-2018 Jérémie Roquet <jroquet@arkanosis.net>
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+# SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER
+# RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
+# NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE
+# USE OR PERFORMANCE OF THIS SOFTWARE.
+
+_bamrescue_check() {
+    local cur=${COMP_WORDS[COMP_CWORD]} prev=${COMP_WORDS[COMP_CWORD-1]}
+    if [[ "$prev" != "--threads" ]]; then
+	if [[ "$cur" = -* ]]; then
+	    COMPREPLY=($(compgen -W '-q --quiet --threads' -- "$cur"))
+	else
+	    COMPREPLY=($(compgen -o plusdirs -f -X '!*.bam' -- "$cur"))
+	fi
+    fi
+}
+
+_bamrescue_rescue() {
+    local cur=${COMP_WORDS[COMP_CWORD]} prev=${COMP_WORDS[COMP_CWORD-1]}
+    if [[ "$prev" != "--threads" ]]; then
+	if [[ "$cur" = -* ]]; then
+	    COMPREPLY=($(compgen -W '--threads' -- "$cur"))
+	else
+	    COMPREPLY=($(compgen -o plusdirs -f -X '!*.bam' -- "$cur"))
+	fi
+    fi
+}
+
+_bamrescue_command() {
+    COMPREPLY=($(compgen -W 'check rescue' -- "$1"))
+}
+
+_bamrescue_option() {
+    COMPREPLY=($(compgen -W '-h --help --version' -- "$1"))
+}
+
+_bamrescue() {
+    if [[ $COMP_CWORD -gt 1 ]]; then
+	case "${COMP_WORDS[1]}" in
+	    check)
+		_bamrescue_check
+	    ;;
+	    rescue)
+		_bamrescue_rescue
+	    ;;
+	esac
+    else
+	local cur=${COMP_WORDS[COMP_CWORD]}
+	if [[ "$cur" = -* ]]; then
+	    _bamrescue_option "$cur"
+	else
+	    _bamrescue_command "$cur"
+	fi
+    fi
+}
+
+complete -F _bamrescue bamrescue
