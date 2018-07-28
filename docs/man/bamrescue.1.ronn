@@ -1,0 +1,139 @@
+bamrescue(1) -- check for corruptions in BAM files and repair them
+==================================================================
+
+## SYNOPSIS
+
+`bamrescue` `check` [`--quiet`] [`--threads=`<threads>] <bamfile><br>
+`bamrescue` `rescue` [`--threads=`<threads>] <inputbamfile> <outputbamfile><br>
+`bamrescue` `-h` | `--help`<br>
+`bamrescue` `--version`
+
+## DESCRIPTION
+
+`bamrescue` is a command line utility to check Binary Sequence
+Alignment / Map (BAM) files for corruption and rescue as much data
+as possible from them in the event they happen to be corrupted.
+
+## OPTIONS
+
+  * `-h`, `--help`:
+    Show help.
+  * `--version`:
+    Show version.
+
+## COMMANDS
+
+### check
+  Check BAM file for corruption.
+
+  Arguments:
+
+  * <bamfile>:
+    BAM file to check.
+
+  Options:
+
+  * `-q`, `--quiet`:
+    Do not output statistics, stop at first error.
+  * `--threads=`<threads>:
+    Number of threads to use, 0 for auto (default: 0).
+
+  Return 0 if the file is not corrupted, return 1 if the file is corrupted or any error happened.
+
+### rescue
+  Keep only non-corrupted blocks of BAM file.
+
+  Arguments:
+
+  * <inputbamfile>:
+    BAM file to rescue.
+  * <outputbamfile>:
+    Rescued BAM file.
+
+  Options:
+
+  * `--threads=`<threads>:
+    Number of threads to use, 0 for auto (default: 0).
+
+  Return 0 if the input file is not corrupted or if the input file is corrupted and has been properly rescued, return 1 if any error happened.
+
+## EXAMPLES
+
+A bam file of 40 MiB (which is very small by today standards) has been
+corrupted by two hard drive bad sectors. Most tools (including gzip) choke on
+the file at the first corrupted byte, meaning that up to 100% of the bam
+payload is considered lost depending on the tool.
+
+Let's check the file using bamrescue:
+
+```shell
+$ bamrescue check samples/corrupted_payload.bam
+bam file statistics:
+   1870 bgzf blocks checked (117 MiB of bam payload)
+      2 corrupted blocks found (0% of total)
+     46 KiB of bam payload lost (0% of total)
+```
+
+Indeed, a whole hard drive bad sector typically amounts for 512 bytes lost,
+which is much smaller than an average bgzf block (which can be up to 64 KiB
+large).
+
+Even though most tools would gave up on this file, it still contains almost
+100% of non-corrupted bam payload, and the user probably wouldn't mind much if
+they could work only on that close-to-100% amount of data.
+
+Let's rescue the non-corrupted payload (beware: this takes as much additional
+space on the disk as the original file):
+
+```shell
+$ bamrescue rescue samples/corrupted_payload.bam rescued_file.bam
+bam file statistics:
+   1870 bgzf blocks found (117 MiB of bam payload)
+      2 corrupted blocks removed (0% of total)
+     46 KiB of bam payload lost (0% of total)
+   1868 non-corrupted blocks rescued (100% of total)
+    111 MiB of bam payload rescued (100% of total)
+```
+
+The resulting bam file can now be used like if it never had been corrupted.
+Rescued data is validated using a CRC32 checksum, so it's not like ignoring
+errors and working on corrupted data (typical use of gzip to get garbage data
+from a corrupted bam file): it's working on (ridiculously) less, validated
+data.
+
+## CAVEATS
+
+bamrescue does not check whether the bam payload of the file is actually
+compliant with the bam specification. It only checks if it has not been
+corrupted after creation, using the error detection codes built in the gzip
+and bgzf formats. This means that as long as the tool used to create a bam
+file was compliant with the specification, the output of bamrescue will be as
+well, but bamrescue itself will do nothing to validate that compliance.
+
+## REPORTING BUGS
+
+Please report bugs and feature requests on [GitHub](https://github.com/Arkanosis/bamrescue/issues).
+
+## FURTHER DOCUMENTATION
+
+bamrescue is extensively documented on [its website](https://bamrescue.arkanosis.net/).
+
+## COPYRIGHT
+
+Copyright (C) 2017-2018 Jérémie Roquet <jroquet@arkanosis.net>
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER
+RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
+NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE
+USE OR PERFORMANCE OF THIS SOFTWARE.
+
+## SEE ALSO
+
+samtools(1), gzip(1), bgzip(1), tabix(1), picard-tools(1)

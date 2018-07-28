@@ -95,7 +95,7 @@ and acceptable reliability.
 This property is used to rescue data from corrupted BAM files by keeping only
 their non-corrupted blocks, hopefully rescuing most reads.
 
-## Example
+## Examples
 
 A bam file of 40 MiB (which is very small by today standards) has been
 corrupted by two hard drive bad sectors. Most tools (including gzip) choke on
