@@ -6,7 +6,7 @@ pkgdesc="Utility to check Binary Sequence Alignment / Map (BAM) files for corrup
 arch=("x86_64")
 url="https://bamrescue.arkanosis.net/"
 license=("custom:ISC")
-makedepends=("cargo")
+makedepends=("cargo" "ruby-ronn")
 checkdepends=("cargo")
 source=("git+https://github.com/arkanosis/${pkgname}?signed") #tag=v0.3.0
 md5sums=('SKIP')
@@ -15,6 +15,7 @@ validpgpkeys=("FA490B15D054C7E83F70B0408C145ABAC11FA702")
 build() {
     cd "$srcdir/$pkgname"
     cargo build --release
+    ronn < "$srcdir/$pkgname/docs/man/$pkgname.1.ronn" | gzip -9 > "$srcdir/$pkgname/docs/man/$pkgname.1.gz"
 }
 
 check() {
@@ -25,7 +26,7 @@ check() {
 package() {
     cd "$srcdir/$pkgname"
     install -Dm755 "target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
-    #install -Dm644 "target/man/$pkgname.gz" "$pkgdir/usr/share/man/$pkgname.gz"
+    install -Dm644 "docs/man/$pkgname.1.gz" "$pkgdir/usr/share/man/man1/$pkgname.1.gz"
     install -Dm644 "completion/bash/$pkgname" "$pkgdir/usr/share/bash-completion/completions/$pkgname"
     install -Dm644 "completion/zsh/_$pkgname" "$pkgdir/usr/share/zsh/site-functions/_$pkgname"
     install -Dm644 "README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
