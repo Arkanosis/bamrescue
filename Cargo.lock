@@ -15,7 +15,7 @@ dependencies = [
 name = "bamrescue"
 version = "0.3.0-dev"
 dependencies = [
- "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "byteorder 1.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "crc 1.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "docopt 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -39,7 +39,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "byteorder"
-version = "1.2.3"
+version = "1.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -222,7 +222,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.42 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "smallvec 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "smallvec 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -314,8 +314,11 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "0.6.2"
+version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "unreachable 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "stable_deref_trait"
@@ -421,7 +424,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum aho-corasick 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c1c6d463cbe7ed28720b5b489e7c083eeb8f90d08be2a0d6bb9e1ffea9ce1afa"
 "checksum bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "d0c54bb8f454c567f21197eefcdbf5679d0bd99f2ddbe52e84c77061952e6789"
 "checksum build_const 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "39092a32794787acd8525ee150305ff051b0aa6cc2abaf193924f5ab05425f39"
-"checksum byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "74c0b906e9446b0a2e4f760cdb3fa4b2c48cdc6db8766a845c54b6ff063fd2e9"
+"checksum byteorder 1.2.7 (registry+https://github.com/rust-lang/crates.io-index)" = "94f88df23a25417badc922ab0f5716cc1330e87f71ddd9203b3a3ccd9cedf75d"
 "checksum clicolors-control 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1f84dec9bc083ce2503908cd305af98bd363da6f54bf8d4bf0ac14ee749ad5d1"
 "checksum console 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "7649ca90478264b9686aac8d269fcb014f14c2bed7c79a7e51b9f6afd4d783eb"
 "checksum crc 1.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d663548de7f5cca343f1e0a48d14dcfb0e9eb4e079ec58883b7251539fa10aeb"
@@ -454,7 +457,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum scopeguard 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "94258f53601af11e6a49f722422f6e3425c52b06245a5cf9bc09908b174f5e27"
 "checksum serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)" = "0c3adf19c07af6d186d91dae8927b83b0553d07ca56cbf7f2f32560455c91920"
 "checksum serde_derive 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)" = "3525a779832b08693031b8ecfb0de81cd71cfd3812088fafe9a7496789572124"
-"checksum smallvec 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "312a7df010092e73d6bbaf141957e868d4f30efd2bfd9bb1028ad91abec58514"
+"checksum smallvec 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)" = "622df2d454c29a4d89b30dc3b27b42d7d90d6b9e587dbf8f67652eb7514da484"
 "checksum stable_deref_trait 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ffbc596e092fe5f598b12ef46cc03754085ac2f4d8c739ad61c4ae266cc3b3fa"
 "checksum strsim 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bb4f380125926a99e52bc279241539c018323fab05ad6368b56f93d9369ff550"
 "checksum syn 0.14.4 (registry+https://github.com/rust-lang/crates.io-index)" = "2beff8ebc3658f07512a413866875adddd20f4fd47b2a4e6c9da65cd281baaea"
