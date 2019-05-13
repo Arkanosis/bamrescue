@@ -6,7 +6,7 @@ pkgdesc="Utility to check Binary Sequence Alignment / Map (BAM) files for corrup
 arch=("x86_64")
 url="https://bamrescue.arkanosis.net/"
 license=("custom:ISC")
-makedepends=("cargo" "ruby-ronn")
+makedepends=("cargo" "git" "ruby-ronn")
 checkdepends=("cargo")
 source=("git+https://github.com/arkanosis/${pkgname}?signed") #tag=v0.3.0
 md5sums=('SKIP')
