@@ -6,7 +6,7 @@ mod common;
 
 use std::io::SeekFrom;
 
-fn check(reader: &mut bamrescue::Rescuable, blocks_count: u64, bad_blocks_count: u64, truncated_in_block: bool, truncated_between_blocks: bool) {
+fn check(reader: &mut dyn bamrescue::Rescuable, blocks_count: u64, bad_blocks_count: u64, truncated_in_block: bool, truncated_between_blocks: bool) {
     {
         let results = bamrescue::check(reader, false, 1, &mut None);
         assert_eq!(results.blocks_count, blocks_count);

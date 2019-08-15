@@ -9,7 +9,7 @@ use std::io::{
     SeekFrom
 };
 
-fn rescue(reader: &mut bamrescue::Rescuable, blocks_count: u64, bad_blocks_count: u64, truncated_in_block: bool, truncated_between_blocks: bool, rescued_bytes: Vec<u8>) {
+fn rescue(reader: &mut dyn bamrescue::Rescuable, blocks_count: u64, bad_blocks_count: u64, truncated_in_block: bool, truncated_between_blocks: bool, rescued_bytes: Vec<u8>) {
     let mut writer = vec![];
     {
         let results = bamrescue::rescue(reader, &mut writer, 1, &mut None);

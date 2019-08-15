@@ -79,7 +79,7 @@ pub struct Results {
     pub truncated_between_blocks: bool,
 }
 
-fn seek_next_block(reader: &mut Rescuable, block_position: u64) {
+fn seek_next_block(reader: &mut dyn Rescuable, block_position: u64) {
     let mut current_position = block_position;
     reader.seek(SeekFrom::Start(current_position)).unwrap();
 
@@ -173,7 +173,7 @@ fn process_payload(block: Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
     }
 }
 
-fn write_block(writer: &mut Option<&mut Write>, block: &Option<BGZFBlock>)  {
+fn write_block(writer: &mut Option<&mut dyn Write>, block: &Option<BGZFBlock>)  {
     if let Some(ref mut writer) = writer {
         if let Some(block) = block {
             writer.write_all(&block.header_bytes).unwrap();
@@ -184,7 +184,7 @@ fn write_block(writer: &mut Option<&mut Write>, block: &Option<BGZFBlock>)  {
     }
 }
 
-fn report_progress(progress_listener: &mut Option<&mut ListenProgress>, block: &Option<BGZFBlock>)  {
+fn report_progress(progress_listener: &mut Option<&mut dyn ListenProgress>, block: &Option<BGZFBlock>)  {
     if let Some(ref mut progress_listener) = progress_listener {
         if let Some(block) = block {
             progress_listener.on_progress(block.end_position);
@@ -192,7 +192,7 @@ fn report_progress(progress_listener: &mut Option<&mut ListenProgress>, block: &
     }
 }
 
-fn report_bad_block(results: &mut Results, progress_listener: &mut Option<&mut ListenProgress>, payload_status: &BGZFBlockStatus)  {
+fn report_bad_block(results: &mut Results, progress_listener: &mut Option<&mut dyn ListenProgress>, payload_status: &BGZFBlockStatus)  {
     results.bad_blocks_count += 1;
     results.bad_blocks_size += payload_status.inflated_payload_size as u64;
     if let Some(ref mut progress_listener) = progress_listener {
@@ -222,7 +222,7 @@ macro_rules! fail {
     }
 }
 
-fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bool, threads: usize, progress_listener: &mut Option<&mut ListenProgress>) -> Results {
+fn process(reader: &mut dyn Rescuable, mut writer: Option<&mut dyn Write>, fail_fast: bool, threads: usize, progress_listener: &mut Option<&mut dyn ListenProgress>) -> Results {
     let reader_size = reader.seek(SeekFrom::End(0)).unwrap();
     reader.seek(SeekFrom::Start(0)).unwrap();
     if let Some(ref mut progress_listener) = progress_listener {
@@ -553,10 +553,10 @@ fn process(reader: &mut Rescuable, mut writer: Option<&mut Write>, fail_fast: bo
     results
 }
 
-pub fn check(reader: &mut Rescuable, fail_fast: bool, threads: usize, progress_listener: &mut Option<&mut ListenProgress>) -> Results {
+pub fn check(reader: &mut dyn Rescuable, fail_fast: bool, threads: usize, progress_listener: &mut Option<&mut dyn ListenProgress>) -> Results {
     process(reader, None, fail_fast, threads, progress_listener)
 }
 
-pub fn rescue(reader: &mut Rescuable, writer: &mut Write, threads: usize, progress_listener: &mut Option<&mut ListenProgress>) -> Results {
+pub fn rescue(reader: &mut dyn Rescuable, writer: &mut dyn Write, threads: usize, progress_listener: &mut Option<&mut dyn ListenProgress>) -> Results {
     process(reader, Some(writer), false, threads, progress_listener)
 }
