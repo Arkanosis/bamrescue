@@ -1,9 +1,3 @@
-extern crate byteorder;
-extern crate crc;
-extern crate futures;
-extern crate futures_cpupool;
-extern crate inflate;
-
 use byteorder:: {
     ReadBytesExt,
     WriteBytesExt,

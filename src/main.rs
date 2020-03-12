@@ -1,10 +1,3 @@
-extern crate bamrescue;
-extern crate docopt;
-extern crate indicatif;
-extern crate number_prefix;
-#[macro_use]
-extern crate serde_derive;
-
 use indicatif::{
     ProgressBar,
     ProgressDrawTarget,
@@ -16,6 +9,8 @@ use number_prefix::{
     Prefixed,
     Standalone,
 };
+
+use serde_derive::Deserialize;
 
 use std::{
     fs::File,

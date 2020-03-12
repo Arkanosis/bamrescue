@@ -1,7 +1,3 @@
-extern crate byteorder;
-
-extern crate bamrescue;
-
 mod common;
 
 use std::io::SeekFrom;
