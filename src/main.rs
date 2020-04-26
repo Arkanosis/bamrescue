@@ -4,11 +4,7 @@ use indicatif::{
     ProgressStyle,
 };
 
-use number_prefix::{
-    NumberPrefix,
-    Prefixed,
-    Standalone,
-};
+use number_prefix::NumberPrefix;
 
 use serde_derive::Deserialize;
 
@@ -126,13 +122,13 @@ fn main() {
             // TODO distinguish between repairable and unrepairable corruptions
             println!("bam file statistics:");
             match NumberPrefix::binary(results.blocks_size as f64) {
-                Standalone(_) => println!("{: >7} bgzf {} checked ({} {} of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, results.blocks_size, if results.blocks_size > 1 { "bytes" } else { "byte" }),
-                Prefixed(prefix, number) => println!("{: >7} bgzf {} checked ({:.0} {}B of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
+                NumberPrefix::Standalone(_) => println!("{: >7} bgzf {} checked ({} {} of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, results.blocks_size, if results.blocks_size > 1 { "bytes" } else { "byte" }),
+                NumberPrefix::Prefixed(prefix, number) => println!("{: >7} bgzf {} checked ({:.0} {}B of bam payload)", results.blocks_count, if results.blocks_count > 1 { "blocks" } else { "block" }, number, prefix),
             }
             println!("{: >7} corrupted {} found ({:.2}% of total)", results.bad_blocks_count, if results.bad_blocks_count > 1 { "blocks" } else { "block" }, if results.blocks_count > 0 { (results.bad_blocks_count * 100) / results.blocks_count } else { 0 });
             match NumberPrefix::binary(results.bad_blocks_size as f64) {
-                Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", results.bad_blocks_size, if results.bad_blocks_size > 1 { "bytes" } else { "byte" }, if results.blocks_size > 0 { (results.bad_blocks_size * 100) / results.blocks_size } else { 0 }),
-                Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, if results.blocks_size > 0 { (results.bad_blocks_size * 100) / results.blocks_size } else { 0 }),
+                NumberPrefix::Standalone(_) => println!("{: >7} {} of bam payload lost ({:.2}% of total)", results.bad_blocks_size, if results.bad_blocks_size > 1 { "bytes" } else { "byte" }, if results.blocks_size > 0 { (results.bad_blocks_size * 100) / results.blocks_size } else { 0 }),
+                NumberPrefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload lost ({:.2}% of total)", number, prefix, if results.blocks_size > 0 { (results.bad_blocks_size * 100) / results.blocks_size } else { 0 }),
             }
             if results.truncated_in_block {
                 println!("        file truncated in a bgzf block");
@@ -145,8 +141,8 @@ fn main() {
                 let good_blocks_size = results.blocks_size - results.bad_blocks_size;
                 println!("{: >7} non-corrupted {} rescued ({:.2}% of total)", good_blocks_count, if good_blocks_count > 1 { "blocks" } else { "block" }, if results.blocks_count > 0 { (good_blocks_count * 100) / results.blocks_count } else { 0 });
                 match NumberPrefix::binary(good_blocks_size as f64) {
-                    Standalone(_) => println!("{: >7} {} of bam payload rescued ({:.2}% of total)", good_blocks_size, if good_blocks_size > 1 { "bytes" } else { "byte" }, if results.blocks_size > 0 { (good_blocks_size * 100) / results.blocks_size } else { 0 }),
-                    Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload rescued ({:.2}% of total)", number, prefix, if results.blocks_size > 0 { (good_blocks_size * 100) / results.blocks_size } else { 0 }),
+                    NumberPrefix::Standalone(_) => println!("{: >7} {} of bam payload rescued ({:.2}% of total)", good_blocks_size, if good_blocks_size > 1 { "bytes" } else { "byte" }, if results.blocks_size > 0 { (good_blocks_size * 100) / results.blocks_size } else { 0 }),
+                    NumberPrefix::Prefixed(prefix, number) => println!("{: >7.0} {}B of bam payload rescued ({:.2}% of total)", number, prefix, if results.blocks_size > 0 { (good_blocks_size * 100) / results.blocks_size } else { 0 }),
                 }
             }
         }
