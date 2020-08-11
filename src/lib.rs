@@ -342,12 +342,9 @@ fn process(reader: &mut dyn Rescuable, mut writer: Option<&mut dyn Write>, fail_
         let mut remaining_extra_field_size = extra_field_size;
         while remaining_extra_field_size > 4 {
             let mut extra_subfield_identifier = [0u8; 2];
-            match reader.read_exact(&mut extra_subfield_identifier) {
-                Ok(_) => (),
-                Err(_) => {
-                    fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
-                    break 'blocks;
-                }
+            if let Err(_) = reader.read_exact(&mut extra_subfield_identifier) {
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                break 'blocks;
             }
 
             let extra_subfield_size = match reader.read_u16::<byteorder::LittleEndian>() {
@@ -393,14 +390,9 @@ fn process(reader: &mut dyn Rescuable, mut writer: Option<&mut dyn Write>, fail_
                         break 'blocks;
                     }
                 };
-            } else {
-                match reader.seek(SeekFrom::Current(extra_subfield_size as i64)) {
-                    Ok(_) => (),
-                    Err(_) => {
-                        fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
-                        break 'blocks;
-                    }
-                }
+            } else if let Err(_) = reader.seek(SeekFrom::Current(extra_subfield_size as i64)) {
+                fail!(fail_fast, results, previous_block, false, current_block_corrupted, true, true);
+                break 'blocks;
             }
 
             remaining_extra_field_size -= 4 + extra_subfield_size;
