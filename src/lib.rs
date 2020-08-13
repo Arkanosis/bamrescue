@@ -9,16 +9,17 @@ use futures::Future;
 
 use std::collections::VecDeque;
 
-use std::io::{
-    BufRead,
-    Error,
-    Read,
-    Seek,
-    SeekFrom,
-    Write,
+use std::{
+    io::{
+        BufRead,
+        Error,
+        Read,
+        Seek,
+        SeekFrom,
+        Write,
+    },
+    str,
 };
-
-use std::str;
 
 // 100 blocks of 64 kiB, even accounting for a huge overhead,
 // is still less than 10 MiB, which is trivially manageable.
