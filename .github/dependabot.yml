@@ -1,0 +1,27 @@
+version: 2
+updates:
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: daily
+    time: "04:00"
+  open-pull-requests-limit: 10
+  assignees:
+  - Arkanosis
+  ignore:
+  - dependency-name: futures
+    versions:
+    - 0.3.12
+    - 0.3.13
+  - dependency-name: serde
+    versions:
+    - 1.0.123
+    - 1.0.124
+    - 1.0.125
+  - dependency-name: docopt
+    versions:
+    - 1.1.1
+  - dependency-name: byteorder
+    versions:
+    - 1.4.2
+    - 1.4.3
