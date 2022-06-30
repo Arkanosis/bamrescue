@@ -3,7 +3,10 @@ use byteorder:: {
     WriteBytesExt,
 };
 
-use crc::crc32::Hasher32;
+use crc::{
+    Crc,
+    CRC_32_ISO_HDLC,
+};
 
 use futures::Future;
 
@@ -35,6 +38,8 @@ const BGZF_IDENTIFIER: [u8; 2] = [0x42, 0x43];
 const DEFLATE: u8 = 8;
 
 const FEXTRA: u8 = 1 << 2;
+
+const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
 
 pub fn version() -> &'static str {
     return option_env!("CARGO_PKG_VERSION").unwrap_or("unknown");
@@ -134,9 +139,9 @@ fn process_payload(block: Option<BGZFBlock>) -> Result<BGZFBlockStatus, Error> {
                 }),
             };
 
-            let mut inflated_payload_digest = crc::crc32::Digest::new(crc::crc32::IEEE);
-            inflated_payload_digest.write(&inflated_payload_bytes);
-            let inflated_payload_crc32 = inflated_payload_digest.sum32();
+            let mut inflated_payload_digest = CRC32.digest();
+            inflated_payload_digest.update(&inflated_payload_bytes);
+            let inflated_payload_crc32 = inflated_payload_digest.finalize();
             if inflated_payload_crc32 != block.inflated_payload_crc32 {
                 return Ok(BGZFBlockStatus {
                     corrupted: true,

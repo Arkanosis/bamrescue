@@ -63,7 +63,7 @@ impl ProgressListener {
         }
     }
     fn update_message(&mut self) {
-        self.progress_bar.set_message(&format!("{: >7} bgzf {} checked so far, {} corrupted.", self.blocks_count, if self.blocks_count > 1 { "blocks" } else { "block" }, self.bad_blocks_count));
+        self.progress_bar.set_message(format!("{: >7} bgzf {} checked so far, {} corrupted.", self.blocks_count, if self.blocks_count > 1 { "blocks" } else { "block" }, self.bad_blocks_count));
     }
 }
 
