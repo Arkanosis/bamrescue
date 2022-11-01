@@ -15,7 +15,7 @@ license = "ISC"
 keywords = ["bam", "integrity", "check", "repair", "bioinfo"]
 categories = ["command-line-utilities"]
 
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 byteorder = "1.4"
