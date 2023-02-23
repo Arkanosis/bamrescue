@@ -1,4 +1,4 @@
-# bamrescue [![](https://img.shields.io/crates/v/bamrescue.svg)](https://crates.io/crates/bamrescue) [![AUR](https://img.shields.io/badge/AUR-v0.2.0-green.svg)](https://aur.archlinux.org/packages/bamrescue/) [![deb](https://img.shields.io/badge/deb-v0.2.0-green.svg)](https://apt.arkanosis.net/pool/stable/b/bamrescue/bamrescue.deb) [![License](https://img.shields.io/badge/license-ISC-blue.svg)](/LICENSE) [![Build status](https://travis-ci.org/Arkanosis/bamrescue.svg?branch=master)](https://travis-ci.org/Arkanosis/bamrescue)
+# bamrescue [![](https://img.shields.io/crates/v/bamrescue.svg)](https://crates.io/crates/bamrescue) [![AUR](https://img.shields.io/badge/AUR-v0.3.0-green.svg)](https://aur.archlinux.org/packages/bamrescue/) [![deb](https://img.shields.io/badge/deb-v0.2.0-green.svg)](https://apt.arkanosis.net/pool/stable/b/bamrescue/bamrescue.deb) [![License](https://img.shields.io/badge/license-ISC-blue.svg)](/LICENSE) [![Build status](https://travis-ci.org/Arkanosis/bamrescue.svg?branch=master)](https://travis-ci.org/Arkanosis/bamrescue)
 
 **bamrescue** is a command line utility to check Binary Sequence
 Alignment / Map (BAM) files for corruption and rescue as much data
@@ -8,7 +8,7 @@ as possible from them in the event they happen to be corrupted.
 
 ## Installation
 
-### On ArchLinux and derivatives (Manjaro, Antergos…)
+### On ArchLinux and derivatives (Manjaro…)
 
 A PKGBUILD is provided on AUR for ArchLinux and derivatives. It is only
 tested with an up-to-date ArchLinux.
@@ -18,7 +18,7 @@ tested with an up-to-date ArchLinux.
 git clone https://aur.archlinux.org/bamrescue.git
 
 # Add the author's PGP key
-gpg2 --recv-keys FA490B15D054C7E83F70B0408C145ABAC11FA702
+gpg --recv-keys FA490B15D054C7E83F70B0408C145ABAC11FA702
 
 # Build and install bamrescue
 cd bamrescue
@@ -198,5 +198,5 @@ Please report bugs and feature requests on [GitHub issues](https://github.com/Ar
 
 ## License
 
-bamrescue is copyright (C) 2017-2018 Jérémie Roquet <jroquet@arkanosis.net> and
+bamrescue is copyright (C) 2017-2023 Jérémie Roquet <jroquet@arkanosis.net> and
 licensed under the ISC license.
