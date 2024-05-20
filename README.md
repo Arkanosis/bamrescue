@@ -52,6 +52,24 @@ sudo apt update
 sudo apt install bamrescue
 ```
 
+### In OCI containers (Docker, Podman…)
+
+A Dockerfile is provided for Docker and alternatives. It is only tested with Podman 5.
+
+To create an OCI image from the Dockerfile, run this command:
+
+```bash
+podman build --tag bamrescue:0.3.0 -f ./Dockerfile
+```
+
+To run an ephemeral container with the created image, run this command:
+
+```bash
+podman run --rm -it bamrescue:0.3.0 bamrescue --help
+```
+
+You can of course replace `--help` with the command / option of you choice.
+
 ## Usage
 
 ```
