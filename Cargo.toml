@@ -18,8 +18,8 @@ categories = ["command-line-utilities"]
 edition = "2021"
 
 [dependencies]
-byteorder = "1.4"
-crc = "3.0"
+byteorder = "1.5"
+crc = "3.2"
 docopt = "1.1"
 futures = "0.1"
 futures-cpupool = "0.1"
