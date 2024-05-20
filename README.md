@@ -35,18 +35,17 @@ yay -S bamrescue
 ### On Debian and derivatives (Ubuntu, Mint…)
 
 Pre-built packages are provided for Debian and derivatives. They are only
-tested with Debian 8 (Jessie), Debian 9 (Stretch), Ubuntu 16.04 LTS (Xenial)
-and Ubuntu 18.04 LTS (Bionic).
+tested with Debian 12 (Bookworm) and Ubuntu 24.04 LTS (Noble).
 
 ```bash
 # Install prerequisites
-sudo apt install curl apt-transport-https
+sudo apt install curl gnupg
 
 # Add the author's PGP key
-curl -s https://arkanosis.net/jroquet.pub.asc | sudo apt-key add -
+curl -s https://arkanosis.net/jroquet.pub.asc | sudo tee /usr/share/keyrings/arkanosis.asc
 
 # Add the author's apt stable channel to your apt sources
-echo "deb https://apt.arkanosis.net/ software stable" | sudo tee /etc/apt/sources.list.d/arkanosis.list
+echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/arkanosis.asc] https://apt.arkanosis.net/ stable main' | sudo tee /etc/apt/sources.list.d/arkanosis.list
 
 # Update and install bamrescue
 sudo apt update
