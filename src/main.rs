@@ -55,8 +55,8 @@ struct ProgressListener {
 }
 
 impl ProgressListener {
-    fn new() -> ProgressListener {
-        ProgressListener {
+    fn new() -> Self {
+        Self {
             progress_bar: ProgressBar::hidden(),
             blocks_count: 0,
             bad_blocks_count: 0,
